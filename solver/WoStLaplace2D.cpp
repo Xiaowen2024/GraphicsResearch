@@ -168,14 +168,14 @@ double lines( Vec2D x ) {
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = {
-   {{ Vec2D(0.2, 0.2), Vec2D(0.6, 0.0), Vec2D(1.0, 0.2) }},
-   {{ Vec2D(1.0, 1.0), Vec2D(0.6, 0.8), Vec2D(0.2, 1.0) }}
-};
-vector<Polyline> boundaryNeumann = {
-   {{ Vec2D(1.0, 0.2), Vec2D(0.8, 0.6), Vec2D(1.0, 1.0) }},
-   {{ Vec2D(0.2, 1.0), Vec2D(0.0, 0.6), Vec2D(0.2, 0.2) }}
-};
+// vector<Polyline> boundaryDirichlet = {
+//    {{ Vec2D(0.2, 0.2), Vec2D(0.6, 0.0), Vec2D(1.0, 0.2) }},
+//    {{ Vec2D(1.0, 1.0), Vec2D(0.6, 0.8), Vec2D(0.2, 1.0) }}
+// };
+// vector<Polyline> boundaryNeumann = {
+//    {{ Vec2D(1.0, 0.2), Vec2D(0.8, 0.6), Vec2D(1.0, 1.0) }},
+//    {{ Vec2D(0.2, 1.0), Vec2D(0.0, 0.6), Vec2D(0.2, 0.2) }}
+// };
 
 // these routines are not used by WoSt itself, but are rather used to check
 // whether a given evaluation point is actually inside the domain
@@ -202,25 +202,25 @@ bool insideDomain( Vec2D x,
 }
 
 int main( int argc, char** argv ) {
-   srand( time(NULL) );
-   ofstream out( "out.csv" );
+   // srand( time(NULL) );
+   // ofstream out( "out.csv" );
 
-   int s = 128; // image size
-   for( int j = 0; j < s; j++ )
-   {
-      cerr << "row " << j << " of " << s << endl;
-      for( int i = 0; i < s; i++ )
-      {
-         Vec2D x0( ((double)i+.5)/((double)s),
-                   ((double)j+.5)/((double)s) );
-         double u = 0.;
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
-            u = solve( x0, boundaryDirichlet, boundaryNeumann, lines );
-         out << u;
-         if( i < s-1 ) out << ",";
-      }
-      out << endl;
-   }
+   // int s = 128; // image size
+   // for( int j = 0; j < s; j++ )
+   // {
+   //    cerr << "row " << j << " of " << s << endl;
+   //    for( int i = 0; i < s; i++ )
+   //    {
+   //       Vec2D x0( ((double)i+.5)/((double)s),
+   //                 ((double)j+.5)/((double)s) );
+   //       double u = 0.;
+   //       if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
+   //          u = solve( x0, boundaryDirichlet, boundaryNeumann, lines );
+   //       out << u;
+   //       if( i < s-1 ) out << ",";
+   //    }
+   //    out << endl;
+   // }
    return 0;
 }
 

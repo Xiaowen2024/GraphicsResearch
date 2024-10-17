@@ -13,13 +13,20 @@
 #include <random>
 #include <vector>
 #include <fstream>
+#include "WalkOnStars.h"
 using namespace std;
 
+WalkOnStars::WalkOnStars(const std::vector<Polyline>& boundaryDirichlet,
+                         const std::vector<Polyline>& boundaryNeumann,
+                         std::function<double(Vec2D)> interpolate)
+    : boundaryDirichlet(boundaryDirichlet),
+      boundaryNeumann(boundaryNeumann),
+      interpolate(interpolate) {}
 // the constant "infinity" is used as a maximum value in several calculations
 const double infinity = numeric_limits<double>::infinity();
 
 // returns a random value in the range [rMin,rMax]
-double random( double rMin, double rMax ) {
+double WalkOnStars::random( double rMin, double rMax ) {
    const double rRandMax = 1.0/(double)RAND_MAX;
    double u = rRandMax*(double)rand();
    return u*(rMax-rMin) + rMin;
@@ -27,27 +34,27 @@ double random( double rMin, double rMax ) {
 
 // use std::complex to implement 2D vectors
 using Vec2D = complex<double>;
-double length( Vec2D u ) { return sqrt( norm(u) ); }
-double angleOf(Vec2D u) { return arg(u); }
-Vec2D rotate90( Vec2D u ) { return Vec2D( -imag(u), real(u) ); }
-double   dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
-double cross(Vec2D u, Vec2D v) { return real(u)*imag(v) - imag(u)*real(v); }
+double WalkOnStars::length( Vec2D u ) { return sqrt( norm(u) ); }
+double WalkOnStars::angleOf(Vec2D u) { return arg(u); }
+Vec2D WalkOnStars::rotate90( Vec2D u ) { return Vec2D( -imag(u), real(u) ); }
+double   WalkOnStars::dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
+double WalkOnStars::cross(Vec2D u, Vec2D v) { return real(u)*imag(v) - imag(u)*real(v); }
 
 // returns the closest point to x on a segment with endpoints a and b
-Vec2D closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
+Vec2D WalkOnStars::closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
    Vec2D u = b-a;
    double t = clamp( dot(x-a,u)/dot(u,u), 0.0, 1.0 );
    return (1.0-t)*a + t*b;
 }
 
 // returns true if the point b on the polyline abc is a silhoutte relative to x
-bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
+bool WalkOnStars::isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
    return cross(b-a,x-a) * cross(c-b,x-b) < 0;
 }
 
 // returns the time t at which the ray x+tv intersects segment ab,
 // or infinity if there is no intersection
-double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
+double WalkOnStars::rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
    Vec2D u = b - a;
    Vec2D w = x - a;
    double d = cross(v,u);
@@ -63,7 +70,7 @@ double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
 using Polyline = vector<Vec2D>;
 
 // returns distance from x to closest point on the given polylines P
-double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
+double WalkOnStars::distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
@@ -75,11 +82,11 @@ double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
 }
 
 // returns distance from x to closest silhouette point on the given polylines P
-double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
+double WalkOnStars::silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    double d = infinity; // minimum distance so far
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 1; j < P[i].size()-1; j++ ) { // iterate over segment pairs
-         if( isSilhouette( x, P[i][j-1], P[i][j], P[i][j+1] )) {
+         if( WalkOnStars::isSilhouette( x, P[i][j-1], P[i][j], P[i][j+1] )) {
             d = min( d, length(x-P[i][j]) ); // update minimum distance
          }
       }
@@ -91,7 +98,7 @@ double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
 // restricted to a ball of radius r around x.  The flag onBoundary indicates
 // whether the first hit is on a boundary segment (rather than the sphere), and
 // if so sets n to the normal at the hit point.
-Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
+Vec2D WalkOnStars::intersectPolylines( Vec2D x, Vec2D v, double r,
                          const vector<Polyline>& P,
                          Vec2D& n, bool& onBoundary ) {
    double tMin = r; // smallest hit time so far
@@ -116,7 +123,7 @@ Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
 // boundaries are each given by a collection of polylines, the Neumann
 // boundary conditions are all zero, and the Dirichlet boundary conditions
 // are given by a function g that can be evaluated at any point in space
-double solve( Vec2D x0, // evaluation point
+double WalkOnStars::solve( Vec2D x0, // evaluation point
               vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
               vector<Polyline> boundaryNeumann, // reflecting part of the boundary
               function<double(Vec2D)> g ) { // Dirichlet boundary values
@@ -160,34 +167,10 @@ double solve( Vec2D x0, // evaluation point
    return sum/nWalks; // Monte Carlo estimate
 }
 
-double lines( Vec2D x ) {
-   const double s = 8.0;
-   return fmod( floor(s*real(x)), 2.0 );
-}
-
-double interpolateHeight(Vec2D x){
-   if (real(x) == 0) {
-      return 0.0;
-   }
-   else if (real(x) == 1){
-      return 1.0;
-   }
-   else {
-      return imag(x);
-   }
-}
-
-// for simplicity, in this code we assume that the Dirichlet and Neumann
-// boundary polylines form a collection of closed polygons (possibly with holes),
-// and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = {
-    {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}
-};
-vector<Polyline> boundaryNeumann = {};
 
 // these routines are not used by WoSt itself, but are rather used to check
 // whether a given evaluation point is actually inside the domain
-double signedAngle( Vec2D x, const vector<Polyline>& P )
+double WalkOnStars::signedAngle( Vec2D x, const vector<Polyline>& P )
 {
    double Theta = 0.;
    for( int i = 0; i < P.size(); i++ )
@@ -201,7 +184,7 @@ double signedAngle( Vec2D x, const vector<Polyline>& P )
 // Returns true if the point x is contained in the region bounded by the Dirichlet
 // and Neumann curves.  We assume these curves form a collection of closed polygons,
 // and are given in a consistent counter-clockwise winding order.
-bool insideDomain( Vec2D x,
+bool WalkOnStars::insideDomain( Vec2D x,
                    const vector<Polyline>& boundaryDirichlet,
                    const vector<Polyline>& boundaryNeumann )
 {
@@ -210,27 +193,3 @@ bool insideDomain( Vec2D x,
    const double delta = 1e-4; // numerical tolerance
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
-
-int main( int argc, char** argv ) {
-   srand( time(NULL) );
-   ofstream out( "polygon_solver_out.csv" );
-
-   int s = 128; // image size
-   for( int j = 0; j < s; j++ )
-   {
-      cerr << "row " << j << " of " << s << endl;
-      for( int i = 0; i < s; i++ )
-      {
-         Vec2D x0( ((double)i+.5)/((double)s),
-                   ((double)j+.5)/((double)s) );
-         double u = 0.;
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
-            u = solve( x0, boundaryDirichlet, boundaryNeumann, interpolateHeight );
-         out << u;
-         if( i < s-1 ) out << ",";
-      }
-      out << endl;
-   }
-   return 0;
-}
-

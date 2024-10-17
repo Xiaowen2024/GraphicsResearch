@@ -30,7 +30,7 @@ using Vec2D = complex<double>;
 double length( Vec2D u ) { return sqrt( norm(u) ); }
 double angleOf(Vec2D u) { return arg(u); }
 Vec2D rotate90( Vec2D u ) { return Vec2D( -imag(u), real(u) ); }
-double   dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
+double dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
 double cross(Vec2D u, Vec2D v) { return real(u)*imag(v) - imag(u)*real(v); }
 
 // returns the closest point to x on a segment with endpoints a and b
