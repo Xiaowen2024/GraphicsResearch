@@ -1,3 +1,0 @@
-forall Point `x` {
-   override `x`.x = (canvas.width/2 - global.labelHeight, global.labelHeight*2)
-}

@@ -1,6 +1,0 @@
-{
-  "substance": "./FirstRay.substance",
-  "style": ["./geometry-2d/geometry-2d.style", "./FirstRay.style"],
-  "domain": "./geometry-2d/geometry-2d.domain",
-  "variation": "BrideMantis8436"
-}

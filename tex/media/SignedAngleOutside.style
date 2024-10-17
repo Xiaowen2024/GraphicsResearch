@@ -1,3 +1,0 @@
-forall Point `x` {
-   override `x`.x = (90,50)
-}

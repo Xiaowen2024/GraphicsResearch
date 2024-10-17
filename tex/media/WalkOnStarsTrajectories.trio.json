@@ -1,6 +1,0 @@
-{
-  "substance": "./WalkOnStarsTrajectories.substance",
-  "style": ["./walk-on-spheres/walk-on-spheres.style", "./walk-on-spheres/no-subdomains.style", "./WalkOnStarsTrajectories.style"],
-  "domain": "./walk-on-spheres/walk-on-spheres.domain",
-  "variation": "CornflowerMole45122"
-}

@@ -1,6 +1,0 @@
-{
-  "substance": "./AtomicClosestRay.substance",
-  "style": ["./geometry-2d/geometry-2d.style", "./AtomicClosestRay.style"],
-  "domain": "./geometry-2d/geometry-2d.domain",
-  "variation": "MadangOctopus2274"
-}
