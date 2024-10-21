@@ -175,7 +175,8 @@ double interpolateHeight(Vec2D x){
    else {
       return imag(x);
    }
-}
+} // generate a saddle point
+
 
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),

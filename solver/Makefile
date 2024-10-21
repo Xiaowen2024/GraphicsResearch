@@ -3,11 +3,11 @@ CXX = c++
 CXXFLAGS = -std=c++17 -O3 -pedantic -Wall
 
 # Source files
-SRCS = WoStLaplace2D.cpp WalkOnStars.cpp
+SRCS = GeneralSolver.cpp WalkOnStars.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 # Target executable
-TARGET = wost
+TARGET = solver
 
 all: $(TARGET)
 

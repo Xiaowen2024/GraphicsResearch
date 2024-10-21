@@ -13,8 +13,10 @@
 #include <random>
 #include <vector>
 #include <fstream>
+#include <Eigen/Dense>
 #include "WalkOnStars.h"
 using namespace std;
+
 
 WalkOnStars::WalkOnStars(const std::vector<Polyline>& boundaryDirichlet,
                          const std::vector<Polyline>& boundaryNeumann,
@@ -26,30 +28,26 @@ WalkOnStars::WalkOnStars(const std::vector<Polyline>& boundaryDirichlet,
 const double infinity = numeric_limits<double>::infinity();
 
 // returns a random value in the range [rMin,rMax]
-double WalkOnStars::random( double rMin, double rMax ) {
-   const double rRandMax = 1.0/(double)RAND_MAX;
-   double u = rRandMax*(double)rand();
-   return u*(rMax-rMin) + rMin;
+double WalkOnStars::random(double rMin, double rMax) {
+   mt19937 rng(std::random_device{}());
+   uniform_real_distribution<double> distribution(rMin, rMax);
+   return distribution(rng);
 }
 
 // use std::complex to implement 2D vectors
-using Vec2D = complex<double>;
-double WalkOnStars::length( Vec2D u ) { return sqrt( norm(u) ); }
-double WalkOnStars::angleOf(Vec2D u) { return arg(u); }
-Vec2D WalkOnStars::rotate90( Vec2D u ) { return Vec2D( -imag(u), real(u) ); }
-double   WalkOnStars::dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
-double WalkOnStars::cross(Vec2D u, Vec2D v) { return real(u)*imag(v) - imag(u)*real(v); }
+using Vec2D =  Eigen::Matrix<double, 2, 1>;
 
 // returns the closest point to x on a segment with endpoints a and b
 Vec2D WalkOnStars::closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
-   Vec2D u = b-a;
-   double t = clamp( dot(x-a,u)/dot(u,u), 0.0, 1.0 );
-   return (1.0-t)*a + t*b;
-}
+   Vec2D u = b - a; // direction vector from a to b
+   double t = (x - a).dot(u) / u.squaredNorm(); // projection factor
+   t = clamp(t, 0.0, 1.0); // clamp t to the range [0, 1]
+   return a + t * u; // return the closest point on the segment
+}  
 
 // returns true if the point b on the polyline abc is a silhoutte relative to x
 bool WalkOnStars::isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
-   return cross(b-a,x-a) * cross(c-b,x-b) < 0;
+   return (b-a).cross(x-a).norm() * (c-b).cross(x-b).norm() < 0;
 }
 
 // returns the time t at which the ray x+tv intersects segment ab,
@@ -57,9 +55,9 @@ bool WalkOnStars::isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
 double WalkOnStars::rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
    Vec2D u = b - a;
    Vec2D w = x - a;
-   double d = cross(v,u);
-   double s = cross(v,w) / d;
-   double t = cross(u,w) / d;
+   double d = v.cross(u).norm();
+   double s = v.cross(w).norm() / d;
+   double t = u.cross(w).norm() / d;
    if (t > 0. && 0. <= s && s <= 1.) {
       return t;
    }
@@ -75,7 +73,7 @@ double WalkOnStars::distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
          Vec2D y = closestPoint( x, P[i][j], P[i][j+1] ); // distance to segment
-         d = min( d, length(x-y) ); // update minimum distance
+         d = min( d, (x-y).norm() ); // update minimum distance
       }
    }
    return d;
@@ -87,7 +85,7 @@ double WalkOnStars::silhouetteDistancePolylines( Vec2D x, const vector<Polyline>
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 1; j < P[i].size()-1; j++ ) { // iterate over segment pairs
          if( WalkOnStars::isSilhouette( x, P[i][j-1], P[i][j], P[i][j+1] )) {
-            d = min( d, length(x-P[i][j]) ); // update minimum distance
+            d = min( d, (x-P[i][j]).norm() ); // update minimum distance
          }
       }
    }
@@ -110,8 +108,8 @@ Vec2D WalkOnStars::intersectPolylines( Vec2D x, Vec2D v, double r,
          double t = rayIntersection( x + c*v, v, P[i][j], P[i][j+1] );
          if( t < tMin ) { // closest hit so far
             tMin = t;
-            n = rotate90( P[i][j+1] - P[i][j] ); // get normal
-            n /= length(n); // make normal unit length
+            n = (P[i][j+1] - P[i][j]).cross(Vec2D(0,0,1)); // get normal
+            n /= n.norm(); // make normal unit length
             onBoundary = true;
          }
       }
@@ -133,6 +131,7 @@ double WalkOnStars::solve( Vec2D x0, // evaluation point
    const int maxSteps = 65536; // maximum walk length
 
    double sum = 0.0; // running sum of boundary contributions
+   #pragma omp parallel for reduction(+:sum)
    for( int i = 0; i < nWalks; i++ ) {
       Vec2D x = x0; // start walk at the evaluation point
       Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
@@ -150,7 +149,7 @@ double WalkOnStars::solve( Vec2D x0, // evaluation point
          // intersect a ray with the star-shaped region boundary
          double theta = random( -M_PI, M_PI );
          if( onBoundary ) { // sample from a hemisphere around the normal
-            theta = theta/2. + angleOf(n);
+            theta = theta/2. + atan2(n.y(), n.x());
          }
          Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
          x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
@@ -175,7 +174,7 @@ double WalkOnStars::signedAngle( Vec2D x, const vector<Polyline>& P )
    double Theta = 0.;
    for( int i = 0; i < P.size(); i++ )
       for( int j = 0; j < P[i].size()-1; j++ )
-         Theta += arg( (P[i][j+1]-x)/(P[i][j]-x) );
+         Theta += atan2( (P[i][j+1]-x).y(), (P[i][j+1]-x).x() ) - atan2( (P[i][j]-x).y(), (P[i][j]-x).x() );
    return Theta;
 }
 
