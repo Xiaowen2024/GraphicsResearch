@@ -169,12 +169,9 @@ double lines( Vec2D x ) {
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
 vector<Polyline> boundaryDirichlet = {
-   {{ Vec2D(0.2, 0.2), Vec2D(0.6, 0.0), Vec2D(1.0, 0.2) }},
-   {{ Vec2D(1.0, 1.0), Vec2D(0.6, 0.8), Vec2D(0.2, 1.0) }}
 };
 vector<Polyline> boundaryNeumann = {
-   {{ Vec2D(1.0, 0.2), Vec2D(0.8, 0.6), Vec2D(1.0, 1.0) }},
-   {{ Vec2D(0.2, 1.0), Vec2D(0.0, 0.6), Vec2D(0.2, 0.2) }}
+
 };
 
 // these routines are not used by WoSt itself, but are rather used to check
@@ -201,26 +198,59 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
-int main( int argc, char** argv ) {
-   // srand( time(NULL) );
-   // ofstream out( "out.csv" );
-
-   // int s = 128; // image size
-   // for( int j = 0; j < s; j++ )
-   // {
-   //    cerr << "row " << j << " of " << s << endl;
-   //    for( int i = 0; i < s; i++ )
-   //    {
-   //       Vec2D x0( ((double)i+.5)/((double)s),
-   //                 ((double)j+.5)/((double)s) );
-   //       double u = 0.;
-   //       if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
-   //          u = solve( x0, boundaryDirichlet, boundaryNeumann, lines );
-   //       out << u;
-   //       if( i < s-1 ) out << ",";
-   //    }
-   //    out << endl;
-   // }
-   return 0;
+double getSaddlePointHeight(Vec2D x) {
+    return real(x) * real(x) - imag(x) * imag(x);
 }
 
+void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int numPoints, vector<Polyline>& boundaryDirichlet) {
+    Polyline boundary;
+
+    double xStep = (x2 - x1) / numPoints;
+    double yStep = (y2 - y1) / numPoints;
+
+    // Bottom edge (left to right)
+    for (double x = x1; x <= x2; x += xStep) {
+        boundary.push_back(Vec2D(x, y1));
+    }
+
+    // Right edge (bottom to top)
+    for (double y = y1 + yStep; y <= y2; y += yStep) {
+        boundary.push_back(Vec2D(x2, y));
+    }
+
+    // Top edge (right to left)
+    for (double x = x2 - xStep; x >= x1; x -= xStep) {
+        boundary.push_back(Vec2D(x, y2));
+    }
+
+    // Left edge (top to bottom)
+    for (double y = y2 - yStep; y > y1; y -= yStep) {
+        boundary.push_back(Vec2D(x1, y));
+    }
+
+    boundaryDirichlet.push_back(boundary);
+}
+
+int main( int argc, char** argv ) {
+   srand( time(NULL) );
+   ofstream out( "saddlePointOut.csv" );
+
+   int s = 128; // image size
+   createSaddlePointBoundary(0., 0., 1., 1., 30, boundaryDirichlet);
+   for( int j = 0; j < s; j++ )
+   {
+      cerr << "row " << j << " of " << s << endl;
+      for( int i = 0; i < s; i++ )
+      {
+         Vec2D x0( ((double)i+.5)/((double)s),
+                   ((double)j+.5)/((double)s) );
+         double u = 0.;
+         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
+            u = solve( x0, boundaryDirichlet, boundaryNeumann, getSaddlePointHeight );
+         out << u;
+         if( i < s-1 ) out << ",";
+      }
+      out << endl;
+   }
+   return 0;
+}
