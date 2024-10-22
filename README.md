@@ -34,7 +34,7 @@ In the main function, modify the arguments passed to the solve function with you
 u = solve( x0, boundaryDirichlet, boundaryNeumann, heightEvaluationFunction);
 ```
 
-Also change the output csv path for ofstream out( "saddlePointNe.csv" ); 
+Also change the output csv path for ofstream out( "saddlePoint.csv" ); 
 
 ### 2. Compile and Run
 
