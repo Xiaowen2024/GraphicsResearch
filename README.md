@@ -1,9 +1,15 @@
-To try the Walk of Stars method on other shapes, do the following steps: 
+# Walk of Stars Method for Shape Generation
 
-In WoStLaplace2D.cpp: 
+This README provides instructions on how to use the Walk of Stars method for generating heights for different shapes.
 
-1. Define boundary values for
-   
+## Steps to Generate New Shapes
+
+### 1. Modify WoStLaplace2D.cpp
+
+#### a. Define Boundary Values
+
+Define the boundary values for Dirichlet and Neumann conditions:
+
 vector<Polyline> boundaryDirichlet = {
 };
 vector<Polyline> boundaryNeumann = {
@@ -21,4 +27,10 @@ u = solve( x0, boundaryDirichlet, boundaryNeumann, heightEvaluationFunction);
 
 Also change the output csv path for ofstream out( "saddlePointNe.csv" ); 
 
-4. 
+4. Compile by c++ -std=c++17 -O3 -pedantic -Wall WoStLaplace2D.cpp -o wost
+
+5. Run by ./wost
+
+After the program finishes, you should see a new csv file in the solver folder with the height values. 
+
+Use visualizer.ipynb to visualize the height field by calling visualize_csv_output(csv_path, output_image_path). 

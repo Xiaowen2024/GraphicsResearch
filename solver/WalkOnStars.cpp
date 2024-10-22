@@ -13,7 +13,7 @@
 #include <random>
 #include <vector>
 #include <fstream>
-#include <Eigen/Dense>
+// #include <Eigen/Dense>
 #include "WalkOnStars.h"
 using namespace std;
 
