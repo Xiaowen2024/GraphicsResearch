@@ -233,7 +233,7 @@ void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int n
 
 int main( int argc, char** argv ) {
    srand( time(NULL) );
-   ofstream out( "saddlePointOut.csv" );
+   ofstream out( "saddlePointNew.csv" );
 
    int s = 128; // image size
    createSaddlePointBoundary(0., 0., 1., 1., 30, boundaryDirichlet);
