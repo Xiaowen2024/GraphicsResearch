@@ -40,7 +40,7 @@ double angleOfTwo(Vec2D u, Vec2D v) {
 }
 Vec2D rotate90( Vec2D u ) { return Vec2D( -u.y(), u.x() ); }
 double   dot(Vec2D u, Vec2D v) { return u.dot(v); }
-double cross(Vec2D u, Vec2D v) { return u.cross(v).norm(); }
+double cross(Vec2D u, Vec2D v) { return (u.x() * v.y() - u.y() * v.x());; }
 
 // returns the closest point to x on a segment with endpoints a and b
 Vec2D closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
@@ -247,7 +247,7 @@ void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int n
 
 int main( int argc, char** argv ) {
    srand( time(NULL) );
-   ofstream out( "saddlePointCorrected.csv" );
+   ofstream out( "saddlePointEigen.csv" );
 
    int s = 128; // image size
    createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);

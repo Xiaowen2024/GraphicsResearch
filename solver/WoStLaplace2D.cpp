@@ -5,6 +5,8 @@
 // NOTE: this code makes a few shortcuts for the sake of code brevity; may
 // be more suitable for tutorials than for production code/evaluation.
 // To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStLaplace2D.cpp -o wost
+// To compile the new version with Open MP: c++ -std=c++17 -O3 -pedantic -Wall -I/opt/homebrew/Cellar/libomp/18.1.1/include WoStLaplace2D.cpp -o wost-opt -L/opt/homebrew/Cellar/libomp/18.1.1/lib -lomp
+
 #include <algorithm>
 #include <array>
 #include <complex>
@@ -237,31 +239,63 @@ void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int n
     boundaryDirichlet.push_back(boundary);
 }
 
+void createStarBoundary(int num_points, double outer_radius, double inner_radius, vector<Polyline>& boundaryDirichlet) 
+{
+   vector<double> angles;
+   for (int i = 0; i < num_points * 2; i++) {
+      angles.push_back(2 * M_PI * i / (num_points * 2));
+   }
+
+   vector<Vec2D> boundary;
+   for (int i = 0; i < num_points * 2; i++) {
+      if (i % 2 == 0) {
+         boundary.push_back(Vec2D(outer_radius * cos(angles[i]), outer_radius * sin(angles[i])));
+      }  else {
+         boundary.push_back(Vec2D(inner_radius * cos(angles[i]), inner_radius * sin(angles[i])));
+      }
+   }
+
+   boundaryDirichlet.push_back(boundary);
+}
+
+double getStarHeight(Vec2D point){
+   double tilt_angle = M_PI / 6;
+   double height_variation = 0.5;
+   double height = tan(tilt_angle) * real(point);
+   height += static_cast<double>(rand()) / RAND_MAX * 2 * height_variation - height_variation; 
+   return height;
+}
+
 int main( int argc, char** argv ) {
    srand( time(NULL) );
    ofstream out( "saddlePointCorrected.csv" );
 
-   int s = 128; // image size
-   createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);
-   auto start = high_resolution_clock::now(); // Added for timing
-   #pragma omp parallel for
-   for( int j = 0; j < s; j++ )
-   {
-      cerr << "row " << j << " of " << s << endl;
-      for( int i = 0; i < s; i++ )
-      {
-         Vec2D x0( ((double)i+.5)/((double)s),
-                   ((double)j+.5)/((double)s) );
-         double u = 0.;
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
-            u = solve( x0, boundaryDirichlet, boundaryNeumann, getSaddlePointHeight );
-         out << u;
-         if( i < s-1 ) out << ",";
-      }
-      out << endl;
+   int s = 16; // image size
+   // createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);
+   // outer_radius=1, inner_radius=0.5, height_variation=0.5, tilt_angle=np.pi / 6
+   createStarBoundary(5, 1.0, 0.5, boundaryDirichlet);
+   for (auto &pair : boundaryDirichlet[0]){
+      cout << pair.x() << " " << pair.y() << std::endl;
    }
-   auto stop = high_resolution_clock::now(); // Added for timing
-   auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
-   cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
+   // auto start = high_resolution_clock::now(); // Added for timing
+   // #pragma omp parallel for
+   // for( int j = 0; j < s; j++ )
+   // {
+   //    cerr << "row " << j << " of " << s << endl;
+   //    for( int i = 0; i < s; i++ )
+   //    {
+   //       Vec2D x0( ((double)i+.5)/((double)s),
+   //                 ((double)j+.5)/((double)s) );
+   //       double u = 0.;
+   //       if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
+   //          u = solve( x0, boundaryDirichlet, boundaryNeumann, getStarHeight );
+   //       out << u;
+   //       if( i < s-1 ) out << ",";
+   //    }
+   //    out << endl;
+   // }
+   // auto stop = high_resolution_clock::now(); // Added for timing
+   // auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
+   // cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
    return 0;
 }

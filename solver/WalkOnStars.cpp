@@ -13,10 +13,9 @@
 #include <random>
 #include <vector>
 #include <fstream>
-// #include <Eigen/Dense>
+#include <Eigen/Dense>
 #include "WalkOnStars.h"
 using namespace std;
-
 
 WalkOnStars::WalkOnStars(const vector<Polyline>& boundaryDirichlet,
                          const vector<Polyline>& boundaryNeumann,
