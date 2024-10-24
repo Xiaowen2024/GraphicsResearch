@@ -260,42 +260,40 @@ void createStarBoundary(int num_points, double outer_radius, double inner_radius
 
 double getStarHeight(Vec2D point){
    double tilt_angle = M_PI / 6;
-   double height_variation = 0.5;
    double height = tan(tilt_angle) * real(point);
-   height += static_cast<double>(rand()) / RAND_MAX * 2 * height_variation - height_variation; 
    return height;
 }
 
 int main( int argc, char** argv ) {
    srand( time(NULL) );
-   ofstream out( "saddlePointCorrected.csv" );
+   ofstream out( "saddlePointStar.csv" );
 
-   int s = 16; // image size
+   int s = 16; // make it smaller to speed up
    // createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);
-   // outer_radius=1, inner_radius=0.5, height_variation=0.5, tilt_angle=np.pi / 6
    createStarBoundary(5, 1.0, 0.5, boundaryDirichlet);
-   for (auto &pair : boundaryDirichlet[0]){
-      cout << pair.x() << " " << pair.y() << std::endl;
+   // helper code to verify the heights match the defined boundary
+   for (auto &pair : boundaryDirichlet[0]) {
+      cout << getStarHeight(pair) << std::endl;
    }
-   // auto start = high_resolution_clock::now(); // Added for timing
-   // #pragma omp parallel for
-   // for( int j = 0; j < s; j++ )
-   // {
-   //    cerr << "row " << j << " of " << s << endl;
-   //    for( int i = 0; i < s; i++ )
-   //    {
-   //       Vec2D x0( ((double)i+.5)/((double)s),
-   //                 ((double)j+.5)/((double)s) );
-   //       double u = 0.;
-   //       if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
-   //          u = solve( x0, boundaryDirichlet, boundaryNeumann, getStarHeight );
-   //       out << u;
-   //       if( i < s-1 ) out << ",";
-   //    }
-   //    out << endl;
-   // }
-   // auto stop = high_resolution_clock::now(); // Added for timing
-   // auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
-   // cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
+   auto start = high_resolution_clock::now(); // Added for timing
+   #pragma omp parallel for
+   for( int j = 0; j < s; j++ )
+   {
+      cerr << "row " << j << " of " << s << endl;
+      for( int i = 0; i < s; i++ )
+      {
+         Vec2D x0( ((double)i+.5)/((double)s),
+                   ((double)j+.5)/((double)s) );
+         double u = 0.;
+         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
+            u = solve( x0, boundaryDirichlet, boundaryNeumann, getStarHeight );
+         out << u;
+         if( i < s-1 ) out << ",";
+      }
+      out << endl;
+   }
+   auto stop = high_resolution_clock::now(); // Added for timing
+   auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
+   cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
    return 0;
 }
