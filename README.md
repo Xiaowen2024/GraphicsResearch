@@ -50,7 +50,7 @@ Run the program with:
 ./wost
 ```
 
-After the program finishes, you should see a new csv file in the solver folder with the height values.
+After the program finishes, you should see a new csv file in the solver folder with the height values. Move them to the output directory. 
 
 ### 3. Visualize the Output
 
