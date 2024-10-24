@@ -51,12 +51,12 @@ void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int n
 
 
 double getSaddlePointHeight(Vec2D x) {
-    return x(0) * x(0) - x(1) * x(1);
-}
+    return x.x() * x.x() - x.y() * x.y();
+}   
 
 double interpolateHeight(Vec2D x){
     double r = x.norm();
-    double theta = atan2(x(0), x(1));
+    double theta = atan2(x.x(), x.y());
     double amplitude = 0.1;
     double frequency = 2 * M_PI;
     return amplitude * sin(frequency * theta) * (1 - r);
