@@ -18,9 +18,9 @@
 using namespace std;
 
 
-WalkOnStars::WalkOnStars(const std::vector<Polyline>& boundaryDirichlet,
-                         const std::vector<Polyline>& boundaryNeumann,
-                         std::function<double(Vec2D)> interpolate)
+WalkOnStars::WalkOnStars(const vector<Polyline>& boundaryDirichlet,
+                         const vector<Polyline>& boundaryNeumann,
+                         function<double(Vec2D)> interpolate)
     : boundaryDirichlet(boundaryDirichlet),
       boundaryNeumann(boundaryNeumann),
       interpolate(interpolate) {}
@@ -29,7 +29,7 @@ const double infinity = numeric_limits<double>::infinity();
 
 // returns a random value in the range [rMin,rMax]
 double WalkOnStars::random(double rMin, double rMax) {
-   mt19937 rng(std::random_device{}());
+   mt19937 rng(random_device{}());
    uniform_real_distribution<double> distribution(rMin, rMax);
    return distribution(rng);
 }

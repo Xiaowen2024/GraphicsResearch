@@ -9,7 +9,7 @@
 #include <fstream>
 using namespace std;
 
-using Vec2D = complex<double>;
+using Vec2D = Eigen::Vector2d;
 using Polyline = vector<Vec2D>;
 
 // Define saddle point surface as Z = X**2 - Y**2
@@ -49,15 +49,14 @@ void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int n
 //     return heightFunc(x, y);
 // }
 
-vector<Polyline> boundaryDirichlet = {};
 
 double getSaddlePointHeight(Vec2D x) {
-    return real(x) * real(x) - imag(x) * imag(x);
+    return x(0) * x(0) - x(1) * x(1);
 }
 
 double interpolateHeight(Vec2D x){
-    double r = abs(x);
-    double theta = atan2(imag(x), real(x));
+    double r = x.norm();
+    double theta = atan2(x(0), x(1));
     double amplitude = 0.1;
     double frequency = 2 * M_PI;
     return amplitude * sin(frequency * theta) * (1 - r);
@@ -69,7 +68,7 @@ void createBoundary(int numPoints, double amplitude, double frequency, vector<Po
     for (int i = 0; i <= numPoints; ++i) {
         double t = (double)i / numPoints;
         double x = cos(2 * M_PI * t);
-        double y = sin(2 * M_PI * t); // circular boundary if evaluate outside the circle, might now hit anything 
+        double y = sin(2 * M_PI * t);
         vec.push_back(Vec2D(x, y));
     }
     boundaryDirichlet.push_back(vec); 
@@ -81,6 +80,7 @@ int main() {
     vector<Polyline> boundaryDirichlet;  
     vector<Polyline> boundaryNeumann;    
     createSaddlePointBoundary(-1.0, -1.0, 1.0, 1.0, 30, boundaryDirichlet);
+    
 
     WalkOnStars w(boundaryDirichlet, boundaryNeumann, getSaddlePointHeight); // Create an instance of WalkOnStars
     int s = 128; // Image size
