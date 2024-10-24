@@ -1,4 +1,4 @@
-// (Slow) implementation of the "Walk on Stars" algorithm for Laplace equations.
+// (Optimized) implementation of the "Walk on Stars" algorithm for Laplace equations.
 // Corresponds to the estimator given in Equation 18 of Sawhney et al,
 // "Walk on Stars: A Grid-Free Monte Carlo Method for PDEs with Neumann Boundary
 // Conditions" (2023), assuming no source term and zero-Neumann conditions.
@@ -13,7 +13,10 @@
 #include <random>
 #include <vector>
 #include <fstream>
+#include <omp.h> 
+#include <chrono> // Added for timing
 using namespace std;
+using namespace std::chrono; // Added for timing
 
 // the constant "infinity" is used as a maximum value in several calculations
 const double infinity = numeric_limits<double>::infinity();
@@ -65,6 +68,7 @@ using Polyline = vector<Vec2D>;
 // returns distance from x to closest point on the given polylines P
 double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
+   #pragma omp parallel for reduction(min:d)
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
          Vec2D y = closestPoint( x, P[i][j], P[i][j+1] ); // distance to segment
@@ -77,6 +81,7 @@ double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
 // returns distance from x to closest silhouette point on the given polylines P
 double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    double d = infinity; // minimum distance so far
+   #pragma omp parallel for reduction(min:d)
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 1; j < P[i].size()-1; j++ ) { // iterate over segment pairs
          if( isSilhouette( x, P[i][j-1], P[i][j], P[i][j+1] )) {
@@ -126,6 +131,7 @@ double solve( Vec2D x0, // evaluation point
    const int maxSteps = 65536; // maximum walk length
 
    double sum = 0.0; // running sum of boundary contributions
+   #pragma omp parallel for reduction(+:sum)
    for( int i = 0; i < nWalks; i++ ) {
       Vec2D x = x0; // start walk at the evaluation point
       Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
@@ -233,10 +239,12 @@ void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int n
 
 int main( int argc, char** argv ) {
    srand( time(NULL) );
-   ofstream out( "saddlePointNew.csv" );
+   ofstream out( "saddlePointCorrected.csv" );
 
    int s = 128; // image size
-   createSaddlePointBoundary(0., 0., 1., 1., 30, boundaryDirichlet);
+   createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);
+   auto start = high_resolution_clock::now(); // Added for timing
+   #pragma omp parallel for
    for( int j = 0; j < s; j++ )
    {
       cerr << "row " << j << " of " << s << endl;
@@ -252,5 +260,8 @@ int main( int argc, char** argv ) {
       }
       out << endl;
    }
+   auto stop = high_resolution_clock::now(); // Added for timing
+   auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
+   cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
    return 0;
 }

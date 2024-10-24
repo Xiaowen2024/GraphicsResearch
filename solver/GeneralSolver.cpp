@@ -49,6 +49,8 @@ void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int n
 //     return heightFunc(x, y);
 // }
 
+vector<Polyline> boundaryDirichlet = {};
+
 double getSaddlePointHeight(Vec2D x) {
     return real(x) * real(x) - imag(x) * imag(x);
 }
