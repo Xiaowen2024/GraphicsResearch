@@ -41,7 +41,7 @@ Also change the output csv path for ofstream out( "saddlePoint.csv" );
 Compile the program using:
 
 ```bash
-c++ -std=c++17 -O3 -pedantic -Wall WoStLaplace2D.cpp -o wost
+c++ -std=c++17 -O3 -pedantic -Wall -I/opt/homebrew/Cellar/libomp/18.1.1/include WoStLaplace2D.cpp -o wost-opt -L/opt/homebrew/Cellar/libomp/18.1.1/lib -lomp
 ```
 
 Run the program with:
