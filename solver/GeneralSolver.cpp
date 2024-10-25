@@ -8,9 +8,11 @@
 #include <vector>
 #include <fstream>
 using namespace std;
-
 using Vec2D = Eigen::Vector2d;
 using Polyline = vector<Vec2D>;
+
+// compile command: c++ -std=c++17 -O3 -pedantic -Wall GeneralSolver.cpp WalkOnStars.cpp -o general-solver
+
 
 // Define saddle point surface as Z = X**2 - Y**2
 
