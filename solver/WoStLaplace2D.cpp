@@ -204,10 +204,8 @@ bool insideDomain( Vec2D x,
 {
    double Theta = signedAngle( x, boundaryDirichlet ) +
                   signedAngle( x, boundaryNeumann );
-   // const double delta = 1e-4; // numerical tolerance
-   // try a bigger tolerance 
-   const double delta = 1;
-   cout << Theta << std::endl;
+   const double delta = 1e-4; // numerical tolerance
+   // cout << Theta << std::endl;
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
@@ -259,6 +257,7 @@ void createStarBoundary(int num_points, double outer_radius, double inner_radius
          boundary.push_back(Vec2D(inner_radius * cos(angles[i]), inner_radius * sin(angles[i])));
       }
    }
+   boundary.push_back(boundary[0]);
 
    boundaryDirichlet.push_back(boundary);
 }
@@ -293,8 +292,11 @@ int main( int argc, char** argv ) {
    //    cout << real(pair) << " " << imag(pair) << std::endl;
    // }
    // check if the boundary is counterclock wise
-   cout << checkOrder(boundaryDirichlet) << std::endl;
+   // cout << checkOrder(boundaryDirichlet) << std::endl;
    auto start = high_resolution_clock::now(); // Added for timing
+   // cout << "inside domain " << insideDomain(Vec2D(0, 0), boundaryDirichlet, boundaryNeumann) << std::endl;
+   // double u = solve( Vec2D(0, 0), boundaryDirichlet, boundaryNeumann, getStarHeight );
+   // cout << u << std::endl;
    #pragma omp parallel for
    for( int j = 0; j < s; j++ )
    {
@@ -303,7 +305,7 @@ int main( int argc, char** argv ) {
       {
          Vec2D x0(((double)i / (s - 1)) * 2 - 1,
                  ((double)j / (s - 1)) * 2 - 1);
-         double u = 0.;
+         double u = numeric_limits<double>::quiet_NaN();
          
          // cout << real(x0) << " " << imag(x0) << std::endl;
 
