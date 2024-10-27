@@ -15,7 +15,7 @@
 #include <random>
 #include <vector>
 #include <fstream>
-#include <omp.h> 
+// #include <omp.h> 
 #include <chrono> // Added for timing
 using namespace std;
 using namespace std::chrono; // Added for timing
@@ -70,7 +70,7 @@ using Polyline = vector<Vec2D>;
 // returns distance from x to closest point on the given polylines P
 double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
-   #pragma omp parallel for reduction(min:d)
+   // #pragma omp parallel for reduction(min:d)
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
          Vec2D y = closestPoint( x, P[i][j], P[i][j+1] ); // distance to segment
@@ -83,7 +83,7 @@ double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
 // returns distance from x to closest silhouette point on the given polylines P
 double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    double d = infinity; // minimum distance so far
-   #pragma omp parallel for reduction(min:d)
+   // #pragma omp parallel for reduction(min:d)
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 1; j < P[i].size()-1; j++ ) { // iterate over segment pairs
          if( isSilhouette( x, P[i][j-1], P[i][j], P[i][j+1] )) {
@@ -133,7 +133,7 @@ double solve( Vec2D x0, // evaluation point
    const int maxSteps = 65536; // maximum walk length
 
    double sum = 0.0; // running sum of boundary contributions
-   #pragma omp parallel for reduction(+:sum)
+   // #pragma omp parallel for reduction(+:sum)
    for( int i = 0; i < nWalks; i++ ) {
       Vec2D x = x0; // start walk at the evaluation point
       Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
@@ -260,6 +260,8 @@ void createStarBoundary(int num_points, double outer_radius, double inner_radius
    boundary.push_back(boundary[0]);
 
    boundaryDirichlet.push_back(boundary);
+   // remove middle 3 points 
+   // boundaryDirichlet[0].erase(boundaryDirichlet[0].begin() + num_points - 1, boundaryDirichlet[0].begin() + num_points + 5);
 }
 
 double getStarHeight(Vec2D point){
@@ -281,23 +283,20 @@ bool checkOrder(vector<Polyline> boundary){
 }
 
 int main( int argc, char** argv ) {
+   bool printBoundary = true;
+   string shape = "star";
+   auto heightFunction = getStarHeight;
+
    srand( time(NULL) );
-   ofstream out( "saddlePointStar.csv" );
+   ofstream out( "../output/" + shape + ".csv" );
 
    int s = 16; // make it smaller to speed up
-   // createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);
    createStarBoundary(5, 1.0, 0.5, boundaryDirichlet);
-   // helper code to verify the heights match the defined boundary
-   // for (auto &pair : boundaryDirichlet[0]) {
-   //    cout << real(pair) << " " << imag(pair) << std::endl;
-   // }
-   // check if the boundary is counterclock wise
-   // cout << checkOrder(boundaryDirichlet) << std::endl;
+   // createSaddlePointBoundary(-1.0, -1.0, 1.0, 1.0, 30, boundaryDirichlet);
    auto start = high_resolution_clock::now(); // Added for timing
-   // cout << "inside domain " << insideDomain(Vec2D(0, 0), boundaryDirichlet, boundaryNeumann) << std::endl;
-   // double u = solve( Vec2D(0, 0), boundaryDirichlet, boundaryNeumann, getStarHeight );
-   // cout << u << std::endl;
-   #pragma omp parallel for
+   
+   // solve using the Walk on Stars algorithm 
+   // #pragma omp parallel for
    for( int j = 0; j < s; j++ )
    {
       cerr << "row " << j << " of " << s << endl;
@@ -310,7 +309,7 @@ int main( int argc, char** argv ) {
          // cout << real(x0) << " " << imag(x0) << std::endl;
 
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
-            u = solve( x0, boundaryDirichlet, boundaryNeumann, getStarHeight );
+            u = solve( x0, boundaryDirichlet, boundaryNeumann, heightFunction );
             cout << "inside domain u: " << u << std::endl;
          }
          out << u;
@@ -321,5 +320,13 @@ int main( int argc, char** argv ) {
    auto stop = high_resolution_clock::now(); // Added for timing
    auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
    cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
-   return 0;
+
+   // print boundary dirichlet 
+   if (!printBoundary) return 0;
+   ofstream outBoundaryD( "../output/" + shape + "BoundaryDirichlet.csv" );
+   for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
+      Vec2D point = boundaryDirichlet[0][i];
+      double height = heightFunction(point);
+      outBoundaryD << real(point) << "," << imag(point) << "," << height << std::endl;
+   }
 }
