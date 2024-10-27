@@ -257,6 +257,8 @@ void createStarBoundary(int num_points, double outer_radius, double inner_radius
          boundary.push_back(Vec2D(inner_radius * cos(angles[i]), inner_radius * sin(angles[i])));
       }
    }
+
+   // make the boundary closed by adding the first point to the end
    boundary.push_back(boundary[0]);
 
    boundaryDirichlet.push_back(boundary);
@@ -289,12 +291,6 @@ int main( int argc, char** argv ) {
    int s = 16; // make it smaller to speed up
    // createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);
    createStarBoundary(5, 1.0, 0.5, boundaryDirichlet);
-   // helper code to verify the heights match the defined boundary
-   // for (auto &pair : boundaryDirichlet[0]) {
-   //    cout << real(pair) << " " << imag(pair) << std::endl;
-   // }
-   // check if the boundary is counterclock wise
-   // cout << checkOrder(boundaryDirichlet) << std::endl;
    auto start = high_resolution_clock::now(); // Added for timing
    // #pragma omp parallel for
    for( int j = 0; j < s; j++ )
