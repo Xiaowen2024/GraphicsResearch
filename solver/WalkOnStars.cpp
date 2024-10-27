@@ -17,6 +17,8 @@
 #include "WalkOnStars.h"
 using namespace std;
 
+using Vec2D = Eigen::Vector2d;
+
 WalkOnStars::WalkOnStars(const vector<Polyline>& boundaryDirichlet,
                          const vector<Polyline>& boundaryNeumann,
                          function<double(Vec2D)> interpolate)
@@ -33,8 +35,10 @@ double WalkOnStars::random(double rMin, double rMax) {
    return distribution(rng);
 }
 
-// use std::complex to implement 2D vectors
-using Vec2D =  Eigen::Matrix<double, 2, 1>;
+// Custom defined cross function
+double WalkOnStars::customCross(Vec2D u, Vec2D v){
+   return u.x() * v.y() - u.y() * v.x();
+}
 
 // returns the closest point to x on a segment with endpoints a and b
 Vec2D WalkOnStars::closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
@@ -46,7 +50,7 @@ Vec2D WalkOnStars::closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
 
 // returns true if the point b on the polyline abc is a silhoutte relative to x
 bool WalkOnStars::isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
-   return (b-a).cross(x-a).norm() * (c-b).cross(x-b).norm() < 0;
+   return customCross(b-a, x-a) * customCross(c-b, x-b) < 0;
 }
 
 // returns the time t at which the ray x+tv intersects segment ab,
@@ -54,9 +58,9 @@ bool WalkOnStars::isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
 double WalkOnStars::rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
    Vec2D u = b - a;
    Vec2D w = x - a;
-   double d = v.cross(u).norm();
-   double s = v.cross(w).norm() / d;
-   double t = u.cross(w).norm() / d;
+   double d = customCross(v, u);
+   double s = customCross(v, w) / d;
+   double t = customCross(u, w) / d;
    if (t > 0. && 0. <= s && s <= 1.) {
       return t;
    }
@@ -107,7 +111,7 @@ Vec2D WalkOnStars::intersectPolylines( Vec2D x, Vec2D v, double r,
          double t = rayIntersection( x + c*v, v, P[i][j], P[i][j+1] );
          if( t < tMin ) { // closest hit so far
             tMin = t;
-            n = (P[i][j+1] - P[i][j]).cross(Vec2D(0,0,1)); // get normal
+            n = (P[i][j+1] - P[i][j]).customCross(Vec2D(0,0,1)); // get normal
             n /= n.norm(); // make normal unit length
             onBoundary = true;
          }

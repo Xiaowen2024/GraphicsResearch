@@ -1,7 +1,7 @@
 # Example Makefile
 CC = g++
 CFLAGS = -std=c++17 -O3 -Wall
-TARGET = my_executable
+TARGET = GeneralSolver.o
 
 all: $(TARGET)
 

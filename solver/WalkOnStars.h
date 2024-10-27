@@ -30,6 +30,7 @@ private:
     function<double(Vec2D)> g;
     double random( double rMin, double rMax);
     Vec2D closestPoint( Vec2D x, Vec2D a, Vec2D b ); 
+    Vec2D WalkOnStars::customCross(Vec2D u, Vec2D v);
     bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c);
     double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b );
     double distancePolylines( Vec2D x, const vector<Polyline>& P );
@@ -38,5 +39,4 @@ private:
                          const vector<Polyline>& P,
                          Vec2D& n, bool& onBoundary );
     double signedAngle( Vec2D x, const vector<Polyline>& P );
-    
 };

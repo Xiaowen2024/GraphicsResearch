@@ -196,6 +196,8 @@ double signedAngle( Vec2D x, const vector<Polyline>& P )
 // Returns true if the point x is contained in the region bounded by the Dirichlet
 // and Neumann curves.  We assume these curves form a collection of closed polygons,
 // and are given in a consistent counter-clockwise winding order.
+
+// if inside the polygon, the signed angle sum should be close to 2 * PI otherwise it should be close to 0
 bool insideDomain( Vec2D x,
                    const vector<Polyline>& boundaryDirichlet,
                    const vector<Polyline>& boundaryNeumann )
@@ -203,6 +205,7 @@ bool insideDomain( Vec2D x,
    double Theta = signedAngle( x, boundaryDirichlet ) +
                   signedAngle( x, boundaryNeumann );
    const double delta = 1e-4; // numerical tolerance
+   // cout << Theta << std::endl;
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
@@ -254,6 +257,7 @@ void createStarBoundary(int num_points, double outer_radius, double inner_radius
          boundary.push_back(Vec2D(inner_radius * cos(angles[i]), inner_radius * sin(angles[i])));
       }
    }
+   boundary.push_back(boundary[0]);
 
    boundaryDirichlet.push_back(boundary);
 }
@@ -262,6 +266,18 @@ double getStarHeight(Vec2D point){
    double tilt_angle = M_PI / 6;
    double height = tan(tilt_angle) * real(point);
    return height;
+}
+
+// calculate the signed area of polygon: xi * yi+1 - xi+1 * yi
+bool checkOrder(vector<Polyline> boundary){
+   double Theta = 0.;
+   for (int k = 0; k < boundary.size(); k ++){
+      int size = boundary[k].size();
+      for( int i = 0; i < size; i++ ){
+         Theta += real(boundary[k][i]) * imag(boundary[k][i+1]) - real(boundary[k][i+1]) * imag(boundary[k][i]);
+      }
+   }
+   return Theta / 2 > 0;
 }
 
 int main( int argc, char** argv ) {
@@ -274,9 +290,11 @@ int main( int argc, char** argv ) {
    // createSaddlePointBoundary(-1., -1., 1., 1., 30, boundaryDirichlet);
    createStarBoundary(5, 1.0, 0.5, boundaryDirichlet);
    // helper code to verify the heights match the defined boundary
-   for (auto &pair : boundaryDirichlet[0]) {
-      cout << getStarHeight(pair) << std::endl;
-   }
+   // for (auto &pair : boundaryDirichlet[0]) {
+   //    cout << real(pair) << " " << imag(pair) << std::endl;
+   // }
+   // check if the boundary is counterclock wise
+   // cout << checkOrder(boundaryDirichlet) << std::endl;
    auto start = high_resolution_clock::now(); // Added for timing
    // #pragma omp parallel for
    for( int j = 0; j < s; j++ )
@@ -284,11 +302,16 @@ int main( int argc, char** argv ) {
       cerr << "row " << j << " of " << s << endl;
       for( int i = 0; i < s; i++ )
       {
-         Vec2D x0( ((double)i+.5)/((double)s),
-                   ((double)j+.5)/((double)s) );
-         double u = 0.;
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) )
+         Vec2D x0(((double)i / (s - 1)) * 2 - 1,
+                 ((double)j / (s - 1)) * 2 - 1);
+         double u = numeric_limits<double>::quiet_NaN();
+         
+         // cout << real(x0) << " " << imag(x0) << std::endl;
+
+         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
             u = solve( x0, boundaryDirichlet, boundaryNeumann, getStarHeight );
+            cout << "inside domain u: " << u << std::endl;
+         }
          out << u;
          if( i < s-1 ) out << ",";
       }
