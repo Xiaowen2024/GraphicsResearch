@@ -181,6 +181,8 @@ vector<Polyline> boundaryNeumann = {
 
 };
 
+vector<double> cornerHeights;
+
 // these routines are not used by WoSt itself, but are rather used to check
 // whether a given evaluation point is actually inside the domain
 double signedAngle( Vec2D x, const vector<Polyline>& P )
@@ -382,8 +384,12 @@ double getBubbleHeightConstant(Vec2D point) {
    return 1;
 }
 
-double initializeRectangleHeightRandom(Vec2D point) {
 
+
+double initializeRectangleHeightRandom(vector<double>& cornerHeights) {
+   for (int i = 0; i < 4; i++) {
+      cornerHeights.push_back(rand() / static_cast<double>(RAND_MAX));
+   }
 }
 
 int main( int argc, char** argv ) {
