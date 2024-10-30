@@ -384,6 +384,9 @@ double getBubbleHeightConstant(Vec2D point) {
    return 1;
 }
 
+double getRectangleHeightRandom(Vec2D point){
+   
+}
 
 
 double initializeRectangleHeightRandom(vector<double>& cornerHeights) {
@@ -394,9 +397,9 @@ double initializeRectangleHeightRandom(vector<double>& cornerHeights) {
 
 int main( int argc, char** argv ) {
    bool printBoundary = true;
-   string shape = "randomStar";
+   string shape = "random-height-rectangle";
    auto heightFunction = getStarHeight; 
-   createStarBoundary(5, 1, 0.5, boundaryDirichlet);
+   // createStarBoundary(5, 1, 0.5, boundaryDirichlet);
 
    srand( time(NULL) );
    ofstream out( "../output/" + shape + ".csv" );
