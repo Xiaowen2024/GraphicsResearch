@@ -168,15 +168,13 @@ double solve( Vec2D x0, // evaluation point
    return sum/nWalks; // Monte Carlo estimate
 }
 
-double lines( Vec2D x ) {
-   const double s = 8.0;
-   return fmod( floor(s*real(x)), 2.0 );
-}
 
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = { {0, 0}, {1, 0}, { 1, 1}, {0, 1}};
+vector<Polyline> boundaryDirichlet = {
+   {0, 0}, {0, 1}, {1, 1}, {1, 0}
+};
 vector<Polyline> boundaryNeumann = {
 
 };
@@ -208,197 +206,15 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
-double getSaddlePointHeight(Vec2D x) {
-    return real(x) * real(x) - imag(x) * imag(x);
-}
-
-void createSaddlePointBoundary(double x1, double y1, double x2, double y2, int numPoints, vector<Polyline>& boundaryDirichlet) {
-    Polyline boundary;
-
-    double xStep = (x2 - x1) / numPoints;
-    double yStep = (y2 - y1) / numPoints;
-
-    // Bottom edge (left to right)
-    for (double x = x1; x <= x2; x += xStep) {
-        boundary.push_back(Vec2D(x, y1));
-    }
-
-    // Right edge (bottom to top)
-    for (double y = y1 + yStep; y <= y2; y += yStep) {
-        boundary.push_back(Vec2D(x2, y));
-    }
-
-    // Top edge (right to left)
-    for (double x = x2 - xStep; x >= x1; x -= xStep) {
-        boundary.push_back(Vec2D(x, y2));
-    }
-
-    // Left edge (top to bottom)
-    for (double y = y2 - yStep; y > y1; y -= yStep) {
-        boundary.push_back(Vec2D(x1, y));
-    }
-
-    boundaryDirichlet.push_back(boundary);
-}
-
-void createStarBoundary(int num_points, double outer_radius, double inner_radius, vector<Polyline>& boundaryDirichlet) 
-{
-   vector<double> angles;
-   for (int i = 0; i < num_points * 2; i++) {
-      angles.push_back(2 * M_PI * i / (num_points * 2));
-   }
-
-   vector<Vec2D> boundary;
-   for (int i = 0; i < num_points * 2; i++) {
-      if (i % 2 == 0) {
-         boundary.push_back(Vec2D(outer_radius * cos(angles[i]), outer_radius * sin(angles[i])));
-      }  else {
-         boundary.push_back(Vec2D(inner_radius * cos(angles[i]), inner_radius * sin(angles[i])));
-      }
-   }
-   boundary.push_back(boundary[0]);
-   cout << "boundary length: " << boundary.size() << std::endl;
-
-   boundaryDirichlet.push_back(boundary);
-   // remove middle 3 points 
-   // boundaryDirichlet[0].erase(boundaryDirichlet[0].begin() + num_points - 1, boundaryDirichlet[0].begin() + num_points + 5);
-}
-
-void createBubbleSoapBoundary(int num_points, double radius, double perturbation_amplitude, std::vector<Polyline>& boundaryDirichlet) {
-    Polyline boundary;
-    
-    // Calculate points around the circle with small random-like perturbations for the soap-bubble effect
-    for (int i = 0; i < num_points; i++) {
-        double angle = 2 * M_PI * i / num_points;
-        
-        // Perturb the radius slightly for a bubble effect
-        double perturbed_radius = radius + perturbation_amplitude * std::sin(3 * angle) * std::cos(2 * angle);
-        
-        // Calculate x and y coordinates
-        double x = perturbed_radius * std::cos(angle);
-        double y = perturbed_radius * std::sin(angle);
-        
-        boundary.push_back(Vec2D(x, y));
-    }
-    
-    // Ensure the boundary is closed by adding the first point to the end
-    boundary.push_back(boundary[0]);
-    
-    std::cout << "Boundary length: " << boundary.size() << std::endl;
-    boundaryDirichlet.push_back(boundary);
-}
-
-
-int start_vertex_count = 0;
-
-double getStarHeight(Vec2D point){
-   double tilt_angle = M_PI / 6;
-   double randomValue = static_cast<double>(rand()) / RAND_MAX * 2;
-   double height = 0;
-   if (start_vertex_count == 0 || start_vertex_count == 10){
-      height = (tilt_angle) * real(point);
-   }
-   else {
-      height = randomValue * (tilt_angle) * real(point);
-   }
-   start_vertex_count += 1;
-   return height;
-}
-
-double getBubbleHeight(Vec2D point) {
-   double max_tilt_angle = M_PI / 6;
-   double distance_from_center = sqrt(real(point) * real(point) + imag(point) * imag(point));
-
-    // Generate a small random perturbation for the "bubble" effect
-   double randomValue = static_cast<double>(rand()) / RAND_MAX * 2 - 1;
-
-    // Calculate height based on distance and perturbation
-   double height = distance_from_center * max_tilt_angle * (0.5 + randomValue * 0.5);
-
-   return height;
-}
-
-double getCircleHeight(Vec2D point) {
-    double wave_amplitude = 0.2; 
-    double angle = atan2(real(point), real(point));  
-    double baseHeight = length(point);
-    return baseHeight * (1 + wave_amplitude * sin(angle));
-}
-
-double getCircleHeight2(Vec2D point) {
-    double radiusFactor = length(point);
-    return radiusFactor * M_PI; 
-}
-
-
-double getCircleHeight3(Vec2D point) {
-    double tilt_factor = 0.1;  // Controls the amount of random variation
-    double randomValue = static_cast<double>(rand()) / RAND_MAX * 2 - 1;
-    double baseHeight = length(point);  // Distance from the origin, or radius
-    return baseHeight * (1 + tilt_factor * randomValue);
-}
-
-void createCircleBoundary(int num_points, double radius, vector<Polyline>& boundaryDirichlet) {
-   vector<Vec2D> boundary;
-   for (int i = 0; i < num_points; i++) {
-      double angle = 2 * M_PI * i / num_points;
-      boundary.push_back(Vec2D(radius * cos(angle), radius * sin(angle)));
-   }
-   boundary.push_back(boundary[0]);
-   boundaryDirichlet.push_back(boundary);
-}
-
-// calculate the signed area of polygon: xi * yi+1 - xi+1 * yi
-bool checkOrder(vector<Polyline> boundary){
-   double Theta = 0.;
-   for (int k = 0; k < boundary.size(); k ++){
-      int size = boundary[k].size();
-      for( int i = 0; i < size; i++ ){
-         Theta += real(boundary[k][i]) * imag(boundary[k][i+1]) - real(boundary[k][i+1]) * imag(boundary[k][i]);
-      }
-   }
-   return Theta / 2 > 0;
-}
-
-void createBubbleBoundary(int num_points, double radius, vector<Polyline>& boundaryDirichlet) {
-   vector<Vec2D> boundary;
-   for (int i = 0; i < num_points; i++) {
-      double angle = 2 * M_PI * i / num_points;
-      boundary.push_back(Vec2D(radius * cos(angle), radius * sin(angle)));
-   }
-   boundary.push_back(boundary[0]); 
-   boundaryDirichlet.push_back(boundary);
-} 
-
-double getBubbleSoapHeight(Vec2D point) {
-   double radius = 1;
-   double distanceFromCenter = sqrt(real(point) * real(point) + imag(point) * imag(point));
-   double maxHeight = radius * 0.2;
-   double height = maxHeight * exp(-pow(distanceFromCenter / radius, 2));
-   return height;
-}
-
-double getBubbleHeightConstant(Vec2D point) {
-   return 1;
-}
-
-double initializeRectangleHeightRandom(Vec2D point) {
-
-}
-
 int main( int argc, char** argv ) {
    bool printBoundary = true;
-   string shape = "randomStar";
-   auto heightFunction = getStarHeight; 
-   createStarBoundary(5, 1, 0.5, boundaryDirichlet);
+   string shape = "bubble-soap";
+   // auto heightFunction = getBubbleSoapHeight;
 
    srand( time(NULL) );
    ofstream out( "../output/" + shape + ".csv" );
 
    int s = 16; // make it smaller to speed up
-   // createStarBoundary(5, 1.0, 0.5, boundaryDirichlet);
-   // cout << "check boundary " << checkOrder(boundaryDirichlet) << std::endl;
-   // createSaddlePointBoundary(-1.0, -1.0, 1.0, 1.0, 30, boundaryDirichlet);
    auto start = high_resolution_clock::now(); // Added for timing
    
    // solve using the Walk on Stars algorithm 
@@ -432,7 +248,7 @@ int main( int argc, char** argv ) {
    ofstream outBoundaryD( "../output/" + shape + "BoundaryDirichlet.csv" );
    for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
       Vec2D point = boundaryDirichlet[0][i];
-      double height = heightFunction(point);
+      // double height = heightFunction(point);
       outBoundaryD << real(point) << "," << imag(point) << "," << height << std::endl;
    }
 }
