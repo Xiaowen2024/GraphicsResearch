@@ -176,7 +176,7 @@ double lines( Vec2D x ) {
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = { {0, 0}, {1, 0}, { 1, 1}, {0, 1}};
+vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
 vector<Polyline> boundaryNeumann = {
 
 };
@@ -391,15 +391,30 @@ double getRectangleHeightRandom(Vec2D point){
    // Assuming corner heights are stored in cornerHeights in the order: bottom-left, bottom-right, top-right, top-left
    double height = 0.0;
 
-   if (y == imag(boundaryDirichlet[0][0])) { // Bottom edge
+   for (int i = 0; i < boundaryDirichlet[0].size(); ++i) {
+      auto boundaryPoint = boundaryDirichlet[0][i];
+      if (real(point) == real(boundaryPoint) && imag(point) == imag(boundaryPoint)) {
+         return cornerHeights[i];
+      }
+   }
+   // cout << "x: " << x << " y: " << y << std::endl;
+
+   double num_tol = 1e-4; 
+   if (abs(y - imag(boundaryDirichlet[0][0])) < num_tol) { 
+      // cout << "same y with 0" << std::endl;
       height = cornerHeights[0] + (cornerHeights[1] - cornerHeights[0]) * (x - real(boundaryDirichlet[0][0])) / (real(boundaryDirichlet[0][1]) - real(boundaryDirichlet[0][0]));
-   } else if (y == imag(boundaryDirichlet[0][2])) { // Top edge
+   } else if (abs(y - imag(boundaryDirichlet[0][2])) < num_tol) { // Top edge
+      // cout << "same y with 2" << std::endl;
       height = cornerHeights[2] + (cornerHeights[3] - cornerHeights[2]) * (x - real(boundaryDirichlet[0][2])) / (real(boundaryDirichlet[0][3]) - real(boundaryDirichlet[0][2]));
-   } else if (x == real(boundaryDirichlet[0][0])) { // Left edge
+   } else if (abs(x - real(boundaryDirichlet[0][0])) < num_tol) { // Left edge
+      // cout << "same x with 0" << std::endl;
       height = cornerHeights[3] + (cornerHeights[0] - cornerHeights[3]) * (y - imag(boundaryDirichlet[0][0])) / (imag(boundaryDirichlet[0][3]) - imag(boundaryDirichlet[0][0]));
-   } else if (x == real(boundaryDirichlet[0][1])) { // Right edge
+   } else if (abs(x - real(boundaryDirichlet[0][1])) < num_tol) { // Right edge
+      // cout << "same x with 1" << std::endl;
       height = cornerHeights[1] + (cornerHeights[2] - cornerHeights[1]) * (y - imag(boundaryDirichlet[0][1])) / (imag(boundaryDirichlet[0][2]) - imag(boundaryDirichlet[0][1]));
    }
+
+
 
    return height;
 }
@@ -418,6 +433,7 @@ int main( int argc, char** argv ) {
    initializeRectangleHeightRandom(cornerHeights);
    srand( time(NULL) );
    ofstream out( "../output/" + shape + ".csv" );
+   // cout << "checking boundary " << checkOrder(boundaryDirichlet) << std::endl;
 
    int s = 16; // make it smaller to speed up
    // createStarBoundary(5, 1.0, 0.5, boundaryDirichlet);
@@ -436,7 +452,7 @@ int main( int argc, char** argv ) {
                  ((double)j / (s - 1)) * 2 - 1);
          double u = numeric_limits<double>::quiet_NaN();
          
-         // cout << real(x0) << " " << imag(x0) << std::endl;
+         cout << real(x0) << " " << imag(x0) << std::endl;
 
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
             u = solve( x0, boundaryDirichlet, boundaryNeumann, heightFunction );
