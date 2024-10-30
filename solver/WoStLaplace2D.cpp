@@ -385,7 +385,23 @@ double getBubbleHeightConstant(Vec2D point) {
 }
 
 double getRectangleHeightRandom(Vec2D point){
+   double x = real(point);
+   double y = imag(point);
    
+   // Assuming corner heights are stored in cornerHeights in the order: bottom-left, bottom-right, top-right, top-left
+   double height = 0.0;
+
+   if (y == imag(boundaryDirichlet[0][0])) { // Bottom edge
+      height = cornerHeights[0] + (cornerHeights[1] - cornerHeights[0]) * (x - real(boundaryDirichlet[0][0])) / (real(boundaryDirichlet[0][1]) - real(boundaryDirichlet[0][0]));
+   } else if (y == imag(boundaryDirichlet[0][2])) { // Top edge
+      height = cornerHeights[2] + (cornerHeights[3] - cornerHeights[2]) * (x - real(boundaryDirichlet[0][2])) / (real(boundaryDirichlet[0][3]) - real(boundaryDirichlet[0][2]));
+   } else if (x == real(boundaryDirichlet[0][0])) { // Left edge
+      height = cornerHeights[3] + (cornerHeights[0] - cornerHeights[3]) * (y - imag(boundaryDirichlet[0][0])) / (imag(boundaryDirichlet[0][3]) - imag(boundaryDirichlet[0][0]));
+   } else if (x == real(boundaryDirichlet[0][1])) { // Right edge
+      height = cornerHeights[1] + (cornerHeights[2] - cornerHeights[1]) * (y - imag(boundaryDirichlet[0][1])) / (imag(boundaryDirichlet[0][2]) - imag(boundaryDirichlet[0][1]));
+   }
+
+   return height;
 }
 
 
@@ -398,9 +414,8 @@ double initializeRectangleHeightRandom(vector<double>& cornerHeights) {
 int main( int argc, char** argv ) {
    bool printBoundary = true;
    string shape = "random-height-rectangle";
-   auto heightFunction = getStarHeight; 
-   // createStarBoundary(5, 1, 0.5, boundaryDirichlet);
-
+   auto heightFunction = getRectangleHeightRandom;
+   initializeRectangleHeightRandom(cornerHeights);
    srand( time(NULL) );
    ofstream out( "../output/" + shape + ".csv" );
 
