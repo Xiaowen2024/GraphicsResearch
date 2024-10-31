@@ -227,8 +227,6 @@ int main( int argc, char** argv ) {
          Vec2D x0(((double)i / (s - 1)) * 2 - 1,
                  ((double)j / (s - 1)) * 2 - 1);
          double u = numeric_limits<double>::quiet_NaN();
-         
-         // cout << real(x0) << " " << imag(x0) << std::endl;
 
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
             u = solve( x0, boundaryDirichlet, boundaryNeumann, heightFunction );
@@ -236,7 +234,7 @@ int main( int argc, char** argv ) {
          }
          out << u;
          if( i < s-1 ) out << ",";
-      }
+      } 
       out << endl;
    }
    auto stop = high_resolution_clock::now(); // Added for timing
