@@ -168,11 +168,7 @@ Vec2D solve( Vec2D x0, // evaluation point
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 
-<<<<<<< Updated upstream
 
-
-=======
->>>>>>> Stashed changes
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
@@ -252,15 +248,58 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
+vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& file ) {
+   double x = real(point);
+   double y = imag(point);
+   Vec2D solved_vec = numeric_limits<double>::quiet_NaN();
+   if (!file.is_open()) {
+      std::cerr << "Unable to open file: " << std::endl;
+      return vector<Vec2D>{solved_vec, solved_vec};
+   }
+   file << "X,Y,F11,F12,F21,F22\n";
+   file << x << "," << y << ",";
+   Vec2D left{ x - h/2, y };
+   Vec2D right{ x + h/2, y };
+   Vec2D top{ x, y + h/2 };
+   Vec2D bottom{ x, y - h/2 };
+   vector<Vec2D> neighbors = {left, right, top, bottom};
+   vector<Vec2D> neighbors_deformed = {};
+   for ( int i = 0; i < 4; i++ ) {
+      if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
+         solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
+         neighbors_deformed.push_back(solved_vec);
+      }
+      else {
+         cout << "outside domain" << std::endl;
+         break;
+         return vector<Vec2D>{solved_vec, solved_vec};
+      }
+   }
+   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
+   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[0])) / h;
+   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[3])) / h;
+   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+   file << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+   return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
+}
+
+Vec2D deform( Vec2D v ) {
+   double x = real(v);
+   double y = imag(v);
+   return Vec2D(x + 0.4 * x * x, y);
+}
+
 int main( int argc, char** argv ) {
    bool printBoundary = true;
    string shape = "crackPropagation";
 
    srand( time(NULL) );
-   ofstream out( "../output/" + shape + ".csv" );
+   // ofstream out( "../output/" + shape + ".csv" );
 
    int s = 16; // make it smaller to speed up
    auto start = high_resolution_clock::now(); // Added for timing
+
+   std::ofstream file("deformation_gradient.csv");
    
    #pragma omp parallel for
    for( int j = 0; j < s; j++ )
@@ -273,13 +312,12 @@ int main( int argc, char** argv ) {
          Vec2D solved_vec = numeric_limits<double>::quiet_NaN();
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
-            solved_vec = solve( x0, boundaryDirichlet, boundaryNeumann, deform);
-            cout << "inside domain " << real(solved_vec) << " " << imag(solved_vec) << std::endl;
+            getDeformationGradient(x0, 0.01, deform, file);
          }
-         out << real(solved_vec) << "," << imag(solved_vec);
-         if( i < s-1 ) out << ",";
+         // out << real(solved_vec) << "," << imag(solved_vec);
+         // if( i < s-1 ) out << ",";
       } 
-      out << endl;
+      // out << endl;
    }
    auto stop = high_resolution_clock::now(); // Added for timing
    auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
