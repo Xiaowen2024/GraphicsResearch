@@ -285,11 +285,11 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    Vec2D top{ x, y + h/2 };
    Vec2D bottom{ x, y - h/2 };
    vector<Vec2D> neighbors = {left, right, top, bottom};
-   vector<Vec2D> neighbors_displacements = {};
+   vector<Vec2D> neighbors_deformed = {};
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
          solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
-         neighbors_displacements.push_back(solved_vec - neighbors[i]);
+         neighbors_deformed.push_back(solved_vec);
       }
       else {
          cout << "outside domain" << std::endl;
@@ -297,15 +297,15 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
          return vector<Vec2D>{solved_vec, solved_vec};
       }
    }
-   interFile << real(neighbors_displacements[0]) << "," << imag(neighbors_displacements[0]) << ",";
-   interFile << real(neighbors_displacements[1]) << "," << imag(neighbors_displacements[1]) << ",";
-   interFile << real(neighbors_displacements[2]) << "," << imag(neighbors_displacements[2]) << ",";
-   interFile << real(neighbors_displacements[3]) << "," << imag(neighbors_displacements[3]) << "\n";
+   interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
+   interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
+   interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
+   interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
 
-   double dudx = (real(neighbors_displacements[1]) - real(neighbors_displacements[0])) / h;
-   double dudy = (real(neighbors_displacements[2]) - real(neighbors_displacements[0])) / h;
-   double dvdx = (imag(neighbors_displacements[1]) - imag(neighbors_displacements[3])) / h;
-   double dvdy = (imag(neighbors_displacements[2]) - imag(neighbors_displacements[3])) / h;
+   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
+   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[0])) / h;
+   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[3])) / h;
+   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
    file << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
@@ -332,9 +332,6 @@ int main( int argc, char** argv ) {
    std::ofstream file("deformation_gradient_rect.csv");
    std::ofstream interFile("deformation_gradient_rect_displacements.csv");
 
-   
-   
-   #pragma omp parallel for
    for( int j = 0; j < s; j++ )
    {
       cerr << "row " << j << " of " << s << endl;
@@ -347,10 +344,7 @@ int main( int argc, char** argv ) {
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
             getDeformationGradient(x0, 0.1, deform, file, interFile);
          }
-         // out << real(solved_vec) << "," << imag(solved_vec);
-         // if( i < s-1 ) out << ",";
       } 
-      // out << endl;
    }
    auto stop = high_resolution_clock::now(); // Added for timing
    auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
