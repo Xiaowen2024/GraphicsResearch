@@ -196,8 +196,8 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
       Vec2D PB = v - boundaryDirichlet[0][i + 1];
       Vec2D AB = boundaryDirichlet[0][i + 1] - boundaryDirichlet[0][i];
 
-//       Vec2D mapping1 = mappings[0][i]; 
-//       Vec2D mapping2 = mappings[0][i + 1];
+      Vec2D mapping1 = mappings[0][i]; 
+      Vec2D mapping2 = mappings[0][i + 1];
 
       // check if v is the same as any of the boundary points
       if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
