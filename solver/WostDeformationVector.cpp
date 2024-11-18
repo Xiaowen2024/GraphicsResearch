@@ -168,7 +168,11 @@ Vec2D solve( Vec2D x0, // evaluation point
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 
+<<<<<<< Updated upstream
 
+
+=======
+>>>>>>> Stashed changes
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
@@ -190,44 +194,69 @@ double signedAngle( Vec2D x, const vector<Polyline>& P )
    return Theta;
 }
 
-
-// Vec2D deform( Vec2D v ) {
-//    vector<Polyline> mappings = {
-//       {
-//          // {Vec2D(0, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.6, 0.4), Vec2D(0.7, 0), Vec2D(1.0, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(0, 0)}
-//          {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
-
-//       }
-//    };
-   
-//    // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
-//    double num_tol = 1e-3;
-//    for (int i = 0; i < mappings[0].size() - 1; i++) {
-//       Vec2D AP = v - boundaryDirichlet[0][i];
-//       Vec2D PB = v - boundaryDirichlet[0][i + 1];
-//       Vec2D AB = boundaryDirichlet[0][i + 1] - boundaryDirichlet[0][i];
+Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double num_tol=1e-3, bool print_in_bounds=false, bool print_out_bounds=false) { 
+   if (print_in_bounds) cout << real(v) << " " << imag(v) << " " << mappings[0].size() << std::endl;
+   for (int i = 0; i < mappings[0].size() - 1; i++) {
+      Vec2D AP = v - boundaryDirichlet[0][i];
+      Vec2D PB = v - boundaryDirichlet[0][i + 1];
+      Vec2D AB = boundaryDirichlet[0][i + 1] - boundaryDirichlet[0][i];
 
 //       Vec2D mapping1 = mappings[0][i]; 
 //       Vec2D mapping2 = mappings[0][i + 1];
 
-//       // check if v is the same as any of the boundary points
-//       if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
-//          return mapping1;
-//       if (abs(real(v) - real(boundaryDirichlet[0][i + 1])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i + 1])) < num_tol)
-//          return mapping2; 
+      // check if v is the same as any of the boundary points
+      if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
+         { if (print_in_bounds) cout << "in bounds 1" << std::endl; return mapping1; }
+      if (abs(real(v) - real(boundaryDirichlet[0][i + 1])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i + 1])) < num_tol)
+         { if (print_in_bounds) cout << "in bounds 2" << std::endl; return mapping2; } 
 
-//       // check that v lies in the line segment between the boundary points
-//       // if (distance(A, C) + distance(B, C) == distance(A, B))
-//       if (abs(length(AP) + length(PB) - length(AB)) < num_tol) {
-//          // interpolate mapping between mapping1 and mapping2
-//          Vec2D mapping3 = mapping1 + (mapping2 - mapping1) * length(AP) / length(AB);
-//          return mapping3;
-//       }
-//    }
+      // check that v lies in the line segment between the boundary points
+      // if (distance(A, C) + distance(B, C) == distance(A, B))
+      if (abs(length(AP) + length(PB) - length(AB)) < num_tol) {
+         // interpolate mapping between mapping1 and mapping2
+         Vec2D mapping3 = mapping1 + (mapping2 - mapping1) * length(AP) / length(AB);
+         if (print_in_bounds) cout << "in the boundary 3" << real(v) << " " << imag(v) << std::endl;
+         return mapping3;
+      }
+   }
 
-//    cerr << "v is not in the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
-//    return Vec2D(0, 0);
-// }
+   cerr << "v is not in the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
+   return Vec2D(0,0);
+}
+
+Vec2D displacement(Vec2D v) { 
+   vector<Polyline> displacedPoints = {
+      {
+         {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
+      }
+   }; 
+
+   // create vector polyline of displacement vectors from boundary points
+   vector<Polyline> displacementVectors = {{{}}};
+   for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
+      Vec2D point = boundaryDirichlet[0][i];
+      Vec2D deformed_vec = displacedPoints[0][i];
+      Vec2D displacement_vec = deformed_vec - point;
+      displacementVectors[0].push_back(displacement_vec);
+   }
+
+   double num_tol = 1;
+   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, displacementVectors, num_tol);
+   return interpolatedDisplacement;
+}
+
+Vec2D deform( Vec2D v ) {
+   vector<Polyline> mappings = {
+      {
+         {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
+      }
+   };
+   
+   // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
+   double num_tol = 1e-3;
+   Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol, true);
+   return mapping;
+}
 
 // Returns true if the point x is contained in the region bounded by the Dirichlet
 // and Neumann curves.  We assume these curves form a collection of closed polygons,
@@ -293,7 +322,10 @@ Vec2D deform( Vec2D v ) {
 
 int main( int argc, char** argv ) {
    bool printBoundary = true;
-   string shape = "deformation-vector";
+   string shape = "crackPropagationDisplacement";
+   // string shape = "crackPropagation";
+   auto boundaryValueFunction =  displacement;
+   // auto boundaryValueFunction = deform; 
 
    srand( time(NULL) );
    // ofstream out( "../output/" + shape + ".csv" );
@@ -303,6 +335,7 @@ int main( int argc, char** argv ) {
 
    std::ofstream file("deformation_gradient_rect.csv");
    std::ofstream interFile("deformation_gradient_rect_displacements.csv");
+
    
    
    #pragma omp parallel for
@@ -333,7 +366,7 @@ int main( int argc, char** argv ) {
    ofstream outBoundaryD( "../output/" + shape + "BoundaryDirichlet.csv" );
    for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
       Vec2D point = boundaryDirichlet[0][i];
-      Vec2D deformed_vec = deform(point);
+      Vec2D deformed_vec = boundaryValueFunction(point);
       outBoundaryD1 << real(point) << "," << imag(point) << "," << 1.0 << std::endl;
       outBoundaryD << real(deformed_vec) << "," << imag(deformed_vec) << "," << 1.0 << std::endl;
    }
