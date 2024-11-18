@@ -171,8 +171,19 @@ Vec2D solve( Vec2D x0, // evaluation point
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
-// vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1.0, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
-vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
+// vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
+// for crack propagation shape 
+vector<Polyline> boundaryDirichlet = {
+   {
+      {Vec2D(0, 0), Vec2D(0.4, 0), Vec2D(0.5, 0.3), Vec2D(0.6, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}
+   }
+};
+
+vector<Polyline> newBoundaryDirichlet = {
+   {
+      {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
+   }
+};
 
 vector<Polyline> boundaryNeumann = {
 
@@ -241,18 +252,14 @@ Vec2D displacement(Vec2D v) {
 }
 
 // for the trouser shape 
-// Vec2D deform( Vec2D v ) {
-//    vector<Polyline> mappings = {
-//       {
-//          {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
-//       }
-//    };
+Vec2D deformCrackPropagation( Vec2D v ) {
+   vector<Polyline> mappings = newBoundaryDirichlet; 
    
-//    // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
-//    double num_tol = 1e-3;
-//    Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol, true);
-//    return mapping;
-// }
+   // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
+   double num_tol = 1e-3;
+   Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol);
+   return mapping;
+}
 
 // Returns true if the point x is contained in the region bounded by the Dirichlet
 // and Neumann curves.  We assume these curves form a collection of closed polygons,
@@ -322,10 +329,10 @@ Vec2D deform( Vec2D v ) {
 
 int main( int argc, char** argv ) {
    bool printBoundary = true;
-   string shape = "crackPropagationDisplacement";
-   // string shape = "crackPropagation";
-   auto boundaryValueFunction =  displacement;
+   // string shape = "rect";
+   string shape = "crackPropagation";
    // auto boundaryValueFunction = deform; 
+   auto boundaryValueFunction = deformCrackPropagation;
 
    srand( time(NULL) );
    // ofstream out( "../output/" + shape + ".csv" );
@@ -333,8 +340,9 @@ int main( int argc, char** argv ) {
    int s = 16; // make it smaller to speed up
    auto start = high_resolution_clock::now(); // Added for timing
 
-   std::ofstream file("deformation_gradient_rect.csv");
-   std::ofstream interFile("deformation_gradient_rect_displacements.csv");
+   // deformation_gradient_{shape}.csv
+   std::ofstream file("deformation_gradient_" + shape + ".csv");
+   std::ofstream interFile("deformation_gradient_" + shape + "_displacements.csv");
 
    for( int j = 0; j < s; j++ )
    {
@@ -346,7 +354,8 @@ int main( int argc, char** argv ) {
          Vec2D solved_vec = numeric_limits<double>::quiet_NaN();
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradient(x0, 0.1, deform, file, interFile);
+            cout << real(x0) << "," << imag(x0) << std::endl;
+            getDeformationGradient(x0, 0.1, boundaryValueFunction, file, interFile);
          }
       } 
    }
