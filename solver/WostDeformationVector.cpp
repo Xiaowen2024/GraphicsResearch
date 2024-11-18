@@ -272,13 +272,12 @@ bool insideDomain( Vec2D x,
 vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& file,   std::ofstream& interFile) {
    double x = real(point);
    double y = imag(point);
-   Vec2D solved_vec = numeric_limits<double>::quiet_NaN();
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+   Vec2D solved_vec = nan; 
    if (!file.is_open()) {
       std::cerr << "Unable to open file: " << std::endl;
       return vector<Vec2D>{solved_vec, solved_vec};
    }
-   file << "X,Y,F11,F12,F21,F22\n";
-   file << x << "," << y << ",";
    interFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
    Vec2D left{ x - h/2, y };
    Vec2D right{ x + h/2, y };
@@ -286,17 +285,20 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    Vec2D bottom{ x, y - h/2 };
    vector<Vec2D> neighbors = {left, right, top, bottom};
    vector<Vec2D> neighbors_deformed = {};
+   // cout << real(point) << "," << imag(point) << "\n";
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
+         // print neigbor points
+         // cout << real(neighbors[i]) << "," << imag(neighbors[i]) << "\n";
          solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
          neighbors_deformed.push_back(solved_vec);
       }
       else {
-         cout << "outside domain" << std::endl;
-         break;
-         return vector<Vec2D>{solved_vec, solved_vec};
+         return vector<Vec2D>{nan, nan};
       }
    }
+   // cout << std::endl;
+
    interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
    interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
    interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
@@ -306,6 +308,8 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[0])) / h;
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[3])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+   file << "X,Y,F11,F12,F21,F22\n";
+   file << x << "," << y << ",";
    file << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
