@@ -168,11 +168,6 @@ Vec2D solve( Vec2D x0, // evaluation point
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 
-<<<<<<< Updated upstream
-
-
-=======
->>>>>>> Stashed changes
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
