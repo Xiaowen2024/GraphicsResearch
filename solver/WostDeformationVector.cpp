@@ -240,18 +240,19 @@ Vec2D displacement(Vec2D v) {
    return interpolatedDisplacement;
 }
 
-Vec2D deform( Vec2D v ) {
-   vector<Polyline> mappings = {
-      {
-         {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
-      }
-   };
+// for the trouser shape 
+// Vec2D deform( Vec2D v ) {
+//    vector<Polyline> mappings = {
+//       {
+//          {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
+//       }
+//    };
    
-   // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
-   double num_tol = 1e-3;
-   Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol, true);
-   return mapping;
-}
+//    // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
+//    double num_tol = 1e-3;
+//    Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol, true);
+//    return mapping;
+// }
 
 // Returns true if the point x is contained in the region bounded by the Dirichlet
 // and Neumann curves.  We assume these curves form a collection of closed polygons,
@@ -284,11 +285,11 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    Vec2D top{ x, y + h/2 };
    Vec2D bottom{ x, y - h/2 };
    vector<Vec2D> neighbors = {left, right, top, bottom};
-   vector<Vec2D> neighbors_deformed = {};
+   vector<Vec2D> neighbors_displacements = {};
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
          solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
-         neighbors_deformed.push_back(solved_vec);
+         neighbors_displacements.push_back(solved_vec - neighbors[i]);
       }
       else {
          cout << "outside domain" << std::endl;
@@ -296,15 +297,15 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
          return vector<Vec2D>{solved_vec, solved_vec};
       }
    }
-   interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
-   interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
-   interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
-   interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
+   interFile << real(neighbors_displacements[0]) << "," << imag(neighbors_displacements[0]) << ",";
+   interFile << real(neighbors_displacements[1]) << "," << imag(neighbors_displacements[1]) << ",";
+   interFile << real(neighbors_displacements[2]) << "," << imag(neighbors_displacements[2]) << ",";
+   interFile << real(neighbors_displacements[3]) << "," << imag(neighbors_displacements[3]) << "\n";
 
-   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
-   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[0])) / h;
-   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[3])) / h;
-   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+   double dudx = (real(neighbors_displacements[1]) - real(neighbors_displacements[0])) / h;
+   double dudy = (real(neighbors_displacements[2]) - real(neighbors_displacements[0])) / h;
+   double dvdx = (imag(neighbors_displacements[1]) - imag(neighbors_displacements[3])) / h;
+   double dvdy = (imag(neighbors_displacements[2]) - imag(neighbors_displacements[3])) / h;
    file << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
