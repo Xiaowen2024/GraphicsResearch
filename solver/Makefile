@@ -1,14 +1,17 @@
-# Example Makefile
 CC = g++
 CFLAGS = -std=c++17 -O3 -Wall
-TARGET = GeneralSolver.o
+TARGET = GeneralSolver
+OBJECTS = main.o
 
 all: $(TARGET)
 
-$(TARGET): main.cpp
-	$(CC) $(CFLAGS) main.cpp -o $(TARGET)
+$(TARGET): $(OBJECTS)
+	$(CC) $(CFLAGS) $(OBJECTS) -o $(TARGET)
+
+%.o: %.cpp
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET) $(OBJECTS) *.exe *~
 
 .PHONY: clean
