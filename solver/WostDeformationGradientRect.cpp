@@ -270,7 +270,7 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
-vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& stressFile, double lam, double mu ) {
+vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& neighbourFile) {
    double x = real(point);
    double y = imag(point);
    Vec2D nan = numeric_limits<double>::quiet_NaN();
@@ -312,8 +312,8 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
 
    // double traceStrain = strain.trace();
-   stressFile << "X,Y,Stress\n";
-   stressFile << x << "," << y << ",";
+   // stressFile << "X,Y,Stress\n";
+   // stressFile << x << "," << y << ",";
 
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
@@ -325,23 +325,23 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
 Vec2D deform( Vec2D v ) {
    double x = real(v);
    double y = imag(v);
-   return Vec2D(x + 0.4 * x * x, y - 0.2 * y * y);
+   return Vec2D(x + 0.4 * x * x, y );
 }
 
 int main( int argc, char** argv ) {
-   string shape = "rect_both";
+   string shape = "rect_x";
 
    srand( time(NULL) );
 
    int s = 16; // make it smaller to speed up
    auto start = high_resolution_clock::now(); // Added for timing
-   double h = 0.1;
+   double h = 0.5;
 
    // deformation_gradient_{shape}.csv
-   std::ofstream strainFile("../output/deformation_gradient_" + shape + "_0.1.csv");
+   std::ofstream strainFile("../output/deformation_gradient_" + shape + "_0.5.csv");
    std::ofstream neighbourFile("../output/deformation_gradient_" + shape + "_neighbour_displacements.csv");
    std::ofstream displacementFile("../output/deformation_gradient_" + shape + "_displacements.csv");
-   std::ofstream stressFile ("../output/deformation_gradient_" + shape + "_stresses.csv");
+   // std::ofstream stressFile ("../output/deformation_gradient_" + shape + "_stresses.csv");
 
    for( int j = 0; j < s; j++ )
    {
@@ -352,13 +352,15 @@ int main( int argc, char** argv ) {
                  ((double)j / (s - 1)) * 2 - 1);
          double x = real(x0);
          double y = imag(x0);
+         double lam = 1.0;
+         double mu = 1.0;
          Vec2D left{ x - h/2, y };
          Vec2D right{ x + h/2, y };
          Vec2D top{ x, y + h/2 };
          Vec2D bottom{ x, y - h/2 };
          Vec2D solved_vec = NAN;
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile, stressFile, lam, mu);
+            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile);
             solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deform);
             displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
          }
