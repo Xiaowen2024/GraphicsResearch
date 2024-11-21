@@ -65,6 +65,7 @@ double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
 
 // boundary geometry is represented by polylines
 using Polyline = vector<Vec2D>;
+vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
 
 // returns distance from x to closest point on the given polylines P
 double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
@@ -341,7 +342,7 @@ int main( int argc, char** argv ) {
    auto start = high_resolution_clock::now(); // Added for timing
 
    // deformation_gradient_{shape}.csv
-   std::ofstream file("deformation_gradient_" + shape + ".csv");
+   std::ofstream file("deformation_gradient_" + shape + "_0.01.csv");
    std::ofstream interFile("deformation_gradient_" + shape + "_displacements.csv");
 
    for( int j = 0; j < s; j++ )
@@ -355,7 +356,7 @@ int main( int argc, char** argv ) {
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
             cout << real(x0) << "," << imag(x0) << std::endl;
-            getDeformationGradient(x0, 0.1, boundaryValueFunction, file, interFile);
+            getDeformationGradient(x0, 0.01, boundaryValueFunction, file, interFile);
          }
       } 
    }
