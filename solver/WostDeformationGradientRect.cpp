@@ -4,8 +4,7 @@
 // Conditions" (2023), assuming no source term and zero-Neumann conditions.
 // NOTE: this code makes a few shortcuts for the sake of code brevity; may
 // be more suitable for tutorials than for production code/evaluation.
-// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStDeformationVector.cpp -o wost-vector
-// To compile the new version with Open MP: c++ -std=c++17 -O3 -pedantic -Wall -I/opt/homebrew/Cellar/libomp/18.1.1/include WoStDeformationVector.cpp -o wost-vector -L/opt/homebrew/Cellar/libomp/18.1.1/lib -lomp
+// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStDeformationGradientRect.cpp -o wost-dg-rect
 
 #include <algorithm>
 #include <array>
@@ -287,11 +286,8 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    Vec2D bottom{ x, y - h/2 };
    vector<Vec2D> neighbors = {left, right, top, bottom};
    vector<Vec2D> neighbors_deformed = {};
-   // cout << real(point) << "," << imag(point) << "\n";
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
-         // print neigbor points
-         // cout << real(neighbors[i]) << "," << imag(neighbors[i]) << "\n";
          solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
          neighbors_deformed.push_back(solved_vec);
       }
@@ -299,7 +295,6 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
          return vector<Vec2D>{nan, nan};
       }
    }
-   // cout << std::endl;
 
    interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
    interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
@@ -307,8 +302,8 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
 
    double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
-   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[0])) / h;
-   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[3])) / h;
+   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
+   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
    file << "X,Y,F11,F12,F21,F22\n";
    file << x << "," << y << ",";
@@ -326,13 +321,12 @@ int main( int argc, char** argv ) {
    string shape = "rect";
 
    srand( time(NULL) );
-   // ofstream out( "../output/" + shape + ".csv" );
 
    int s = 16; // make it smaller to speed up
    auto start = high_resolution_clock::now(); // Added for timing
 
    // deformation_gradient_{shape}.csv
-   std::ofstream file("../output/deformation_gradient_" + shape + "_0.5.csv");
+   std::ofstream file("../output/deformation_gradient_" + shape + "_0.01.csv");
    std::ofstream interFile("deformation_gradient_" + shape + "_displacements.csv");
 
    for( int j = 0; j < s; j++ )
@@ -344,8 +338,7 @@ int main( int argc, char** argv ) {
                  ((double)j / (s - 1)) * 2 - 1);
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
-            cout << real(x0) << "," << imag(x0) << std::endl;
-            getDeformationGradient(x0, 0.5, deform, file, interFile);
+            getDeformationGradient(x0, 0.01, deform, file, interFile);
          }
       } 
    }

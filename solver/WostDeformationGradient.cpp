@@ -4,8 +4,7 @@
 // Conditions" (2023), assuming no source term and zero-Neumann conditions.
 // NOTE: this code makes a few shortcuts for the sake of code brevity; may
 // be more suitable for tutorials than for production code/evaluation.
-// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStDeformationVector.cpp -o wost-vector
-// To compile the new version with Open MP: c++ -std=c++17 -O3 -pedantic -Wall -I/opt/homebrew/Cellar/libomp/18.1.1/include WoStDeformationVector.cpp -o wost-vector -L/opt/homebrew/Cellar/libomp/18.1.1/lib -lomp
+// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStDeformationGradient.cpp -o wost-dg    
 
 #include <algorithm>
 #include <array>
@@ -293,7 +292,6 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    Vec2D bottom{ x, y - h/2 };
    vector<Vec2D> neighbors = {left, right, top, bottom};
    vector<Vec2D> neighbors_deformed = {};
-   // cout << real(point) << "," << imag(point) << "\n";
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
          // print neigbor points
@@ -305,13 +303,11 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
          return vector<Vec2D>{nan, nan};
       }
    }
-   // cout << std::endl;
 
    interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
    interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
    interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
    interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
-
    double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
    double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[0])) / h;
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[3])) / h;
