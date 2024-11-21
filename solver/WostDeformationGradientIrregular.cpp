@@ -309,8 +309,8 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
    interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
    double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
-   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[0])) / h;
-   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[3])) / h;
+   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
+   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
    file << "X,Y,F11,F12,F21,F22\n";
    file << x << "," << y << ",";

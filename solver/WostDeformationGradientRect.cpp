@@ -270,16 +270,16 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
-vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& file,   std::ofstream& interFile) {
+vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile,   std::ofstream& neighbourFile, std::ofstream& stressFile) {
    double x = real(point);
    double y = imag(point);
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    Vec2D solved_vec = nan; 
-   if (!file.is_open()) {
+   if (!strainFile.is_open()) {
       std::cerr << "Unable to open file: " << std::endl;
       return vector<Vec2D>{solved_vec, solved_vec};
    }
-   interFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
+   neighbourFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
    Vec2D left{ x - h/2, y };
    Vec2D right{ x + h/2, y };
    Vec2D top{ x, y + h/2 };
@@ -296,18 +296,18 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
       }
    }
 
-   interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
-   interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
-   interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
-   interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
+   neighbourFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
+   neighbourFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
+   neighbourFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
+   neighbourFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
 
    double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
    double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
-   file << "X,Y,F11,F12,F21,F22\n";
-   file << x << "," << y << ",";
-   file << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+   strainFile << "X,Y,F11,F12,F21,F22\n";
+   strainFile << x << "," << y << ",";
+   strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
 
@@ -330,6 +330,7 @@ int main( int argc, char** argv ) {
    std::ofstream strainFile("../output/deformation_gradient_" + shape + "_0.1.csv");
    std::ofstream neighbourFile("../output/deformation_gradient_" + shape + "_neighbour_displacements.csv");
    std::ofstream displacementFile("../output/deformation_gradient_" + shape + "_displacements.csv");
+   std::ofstream stressFile ("../output/deformation_gradient_" + shape + "_stresses.csv");
 
    for( int j = 0; j < s; j++ )
    {
@@ -346,7 +347,7 @@ int main( int argc, char** argv ) {
          Vec2D bottom{ x, y - h/2 };
          Vec2D solved_vec = NAN;
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradient(x0, h, deform, strainFile, neighbourFile);
+            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile);
             solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deform);
             displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
          }
