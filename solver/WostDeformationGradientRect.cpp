@@ -270,7 +270,7 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
-vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile,   std::ofstream& neighbourFile, std::ofstream& stressFile) {
+vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& stressFile, double lam, double mu ) {
    double x = real(point);
    double y = imag(point);
    Vec2D nan = numeric_limits<double>::quiet_NaN();
@@ -305,11 +305,22 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+
+
    strainFile << "X,Y,F11,F12,F21,F22\n";
    strainFile << x << "," << y << ",";
    strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+
+   // double traceStrain = strain.trace();
+   stressFile << "X,Y,Stress\n";
+   stressFile << x << "," << y << ",";
+
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
+
+// def getTrace( double dudx, double dudy, double dvdx, double dvdy ) {
+
+// }
 
 Vec2D deform( Vec2D v ) {
    double x = real(v);
@@ -347,7 +358,7 @@ int main( int argc, char** argv ) {
          Vec2D bottom{ x, y - h/2 };
          Vec2D solved_vec = NAN;
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile);
+            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile, stressFile, lam, mu);
             solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deform);
             displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
          }
