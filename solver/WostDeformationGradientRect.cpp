@@ -137,8 +137,12 @@ Vec2D solve( Vec2D x0, // evaluation point
    const int maxSteps = 65536; // maximum walk length
    double sum_x = 0.0; // running sum of boundary contributions
    double sum_y = 0.0;
+   int i = 0;
+   unsigned seed = 1;
+   srand(seed);
+  
    // #pragma omp parallel for reduction(+:sum)
-   for( int i = 0; i < nWalks; i++ ) {
+   for( i = 0; i < nWalks; i++ ) {
       Vec2D x = x0; // start walk at the evaluation point
       Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
       bool onBoundary = false; // flag whether x is on the interior or boundary
@@ -166,10 +170,12 @@ Vec2D solve( Vec2D x0, // evaluation point
 
       if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
 
+
       Vec2D eval_vec = g(x);
       sum_x += real(eval_vec);
       sum_y += imag(eval_vec);
    }
+   std::cout << i << std::endl;
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 
@@ -329,7 +335,7 @@ Vec2D deform( Vec2D v ) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "rect_x";
+   string shape = "seed_1";
 
    srand( time(NULL) );
 
