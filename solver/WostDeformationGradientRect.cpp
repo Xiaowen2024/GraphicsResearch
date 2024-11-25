@@ -133,7 +133,7 @@ Vec2D solve( Vec2D x0, // evaluation point
               function<Vec2D(Vec2D)> g ) { // Dirichlet boundary values
    const double eps = 0.0001; // stopping tolerance
    const double rMin = 0.0001; // minimum step size
-   const int nWalks = 65536; // number of Monte Carlo samples
+   const int nWalks = 655360; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
    double sum_x = 0.0; // running sum of boundary contributions
    double sum_y = 0.0;
@@ -335,16 +335,16 @@ Vec2D deform( Vec2D v ) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "seed_1";
+   string shape = "seed_1_655360";
 
    srand( time(NULL) );
 
    int s = 16; // make it smaller to speed up
    auto start = high_resolution_clock::now(); // Added for timing
-   double h = 0.5;
+   double h = 0.001;
 
    // deformation_gradient_{shape}.csv
-   std::ofstream strainFile("../output/deformation_gradient_" + shape + "_0.5.csv");
+   std::ofstream strainFile("../output/deformation_gradient_" + shape + "_0.001.csv");
    std::ofstream neighbourFile("../output/deformation_gradient_" + shape + "_neighbour_displacements.csv");
    std::ofstream displacementFile("../output/deformation_gradient_" + shape + "_displacements.csv");
    // std::ofstream stressFile ("../output/deformation_gradient_" + shape + "_stresses.csv");
