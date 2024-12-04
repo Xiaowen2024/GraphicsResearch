@@ -26,7 +26,9 @@
                 "/System/Library/Frameworks/OpenGL.framework/Headers",
                 "/System/Library/Frameworks/GLUT.framework/Headers", 
                 "/usr/local/include",                    
-                "/opt/homebrew/Cellar/libomp/18.1.1/include"
+                "/opt/homebrew/Cellar/libomp/18.1.1/include",
+                "/opt/homebrew/Cellar/sfml/2.6.2/include", 
+                "${workspaceFolder}/solver"
             ],
             "defines": [],
             "macFrameworkPath": [
