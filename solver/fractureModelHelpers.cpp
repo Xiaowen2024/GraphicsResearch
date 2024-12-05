@@ -6,11 +6,10 @@
 #include <random>
 #include <vector>
 #include <fstream>
-#include "fractionModelHelpers.h"
+#include "fractureModelHelpers.h"
 using namespace std;
 
 using Vec2D = complex<double>;
-const double infinity = numeric_limits<double>::infinity();
 using Polyline = vector<Vec2D>;
 
 // returns distance from x to closest point on the given polylines P
@@ -48,7 +47,7 @@ Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
                          const vector<Polyline>& P,
                          Vec2D& n, bool& onBoundary ) {
    double tMin = r; // smallest hit time so far
-   n = Vec2D{ 0.0, 0.0 }; // first hit normal
+   n = Vec2D(0.0, 0.0); // first hit normal
    onBoundary = false; // will be true only if the first hit is on a segment
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
@@ -267,7 +266,6 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
 }
 
 
-
 vector<pair<double, Vec2D>> eigenDecomposition(vector<Vec2D> A) {
    double a = 1;
    double b = -real(A[0]) - imag(A[1]);
@@ -278,10 +276,14 @@ vector<pair<double, Vec2D>> eigenDecomposition(vector<Vec2D> A) {
    Vec2D eigenvector1Normalized = eigenvector1 / length(eigenvector1);
    Vec2D eigenvector2 = Vec2D(lambda2 - real(A[0]), -imag(A[0]));
    Vec2D eigenvector2Normalized = eigenvector2 / length(eigenvector2);
-   return vector<pair<double, Vec2D>>{
+   vector<pair<double, Vec2D>> eigenpairs = vector<pair<double, Vec2D>>{
       {lambda1, eigenvector1Normalized},
       {lambda2, eigenvector2Normalized}
    };
+   sort (eigenpairs.begin(), eigenpairs.end(), [](const pair<double, Vec2D>& a, const pair<double, Vec2D>& b) {
+      return a.first > b.first;
+   });
+   return eigenpairs;
 }
 
 pair<vector<Vec2D>, vector<Vec2D>> forceDecomposition(vector<Vec2D> stress, vector<pair<double, Vec2D>> eigenpairs) {
@@ -307,9 +309,6 @@ vector<Vec2D> getSeparationTensor(Vec2D tensileForce, Vec2D compressiveForce, ve
 
 Vec2D determineCrackPropagationDirection(vector<Vec2D> separationTensor, double threshold) {
    vector<pair<double, Vec2D>> eigenpairs = eigenDecomposition(separationTensor);
-   sort(eigenpairs.begin(), eigenpairs.end(), [](const pair<double, Vec2D>& a, const pair<double, Vec2D>& b) {
-      return a.first > b.first;
-   });
    if  (eigenpairs[0].first > threshold) {
       return eigenpairs[0].second;
    }

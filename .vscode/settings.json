@@ -67,7 +67,8 @@
         "set": "cpp",
         "unordered_set": "cpp",
         "valarray": "cpp",
-        "adolcforward": "cpp"
+        "adolcforward": "cpp",
+        "functional": "cpp"
     },
     "cmake.ignoreCMakeListsMissing": true
 }
