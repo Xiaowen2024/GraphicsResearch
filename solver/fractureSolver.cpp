@@ -13,13 +13,38 @@
 using namespace std;
 using namespace std::chrono; 
 
+// c++ fractureSolver.cpp -std=c++17 -I/opt/homebrew/Cellar/sfml/2.6.2/include -o fsolver -L/opt/homebrew/Cellar/sfml/2.6.2/lib -lsfml-graphics -lsfml-window -lsfml-system
+
 const int WIDTH = 800;
 const int HEIGHT = 600;
+vector<Polyline> boundaryDirichlet = { {{Vec2D(200, 150), Vec2D(200, 450), Vec2D(600, 450), Vec2D(600, 150), Vec2D(200, 150)}} };
+vector<Polyline> boundaryNeumann = {};
 
-void startCrackPropagation(vector<Polyline> boundaryDirichlet, function<Vec2D(Vec2D)> deform, Vec2D crackTip) {
-    string shape = "rect-left-corner_h_0.1";
+void plotStressVector(vector<pair<double, Vec2D>> tensilePair, vector<pair<double, Vec2D>> compressivePair, Vec2D crackTip, sf::RenderWindow& window) {
+    Vec2D tensileVector = tensilePair[0].second;
+    Vec2D compressiveVector = compressivePair[0].second;
+    cout << "Tensile vector: " << tensileVector << endl;
+    cout << "Compressive vector: " << compressiveVector << endl;
+    sf::VertexArray tensileLine(sf::Lines, 2);
+    tensileLine[0].position = sf::Vector2f(real(crackTip), imag(crackTip));
+    tensileLine[0].color = sf::Color::Red;
+    tensileLine[1].position = sf::Vector2f(real(crackTip) + real(tensileVector) * 50, imag(crackTip) + imag(tensileVector) * 50);
+    tensileLine[1].color = sf::Color::Red;
+
+    sf::VertexArray compressiveLine(sf::Lines, 2);
+    compressiveLine[0].position = sf::Vector2f(real(crackTip), imag(crackTip));
+    compressiveLine[0].color = sf::Color::Yellow;
+    compressiveLine[1].position = sf::Vector2f(real(crackTip) + real(compressiveVector) * 50, imag(crackTip) + imag(compressiveVector) * 50);
+    compressiveLine[1].color = sf::Color::Yellow;
+
+    window.draw(tensileLine);
+    window.draw(compressiveLine);
+}
+
+pair<vector<pair<double, Vec2D>>, vector<pair<double, Vec2D>>> startCrackPropagation(vector<Polyline> boundaryDirichlet, function<Vec2D(Vec2D)> deform, Vec2D crackTip, sf::RenderWindow& window) {
+    double h = 10;
+    string shape = "rect-left-corner_h" + to_string(h);
     int s = 16;
-    double h = 0.1;
     std::ofstream strainFile("../output/deformation_gradient_" + shape + ".csv");
     std::ofstream neighbourFile("../output/deformation_gradient_" + shape + "_neighbour_displacements.csv");
     std::ofstream displacementFile("../output/deformation_gradient_" + shape + "_displacements.csv");
@@ -34,33 +59,57 @@ void startCrackPropagation(vector<Polyline> boundaryDirichlet, function<Vec2D(Ve
     Vec2D bottom{ x, y - h/2 };
     Vec2D solved_vec = NAN;
     if (insideDomain(crackTip, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-        vector<Vec2D> stress = getDeformationGradientAndStress(crackTip, h, deform, strainFile, neighbourFile, stressFile);
+        vector<Vec2D> stress = getDeformationGradientAndStress(crackTip, h, deform, strainFile, neighbourFile, stressFile, boundaryDirichlet, boundaryNeumann);
         vector<pair<double, Vec2D>> eigenpairs = eigenDecomposition(stress);
         pair<vector<Vec2D>, vector<Vec2D>> forcePair = forceDecomposition(stress, eigenpairs);
         vector<pair<double, Vec2D>> tensilePair = eigenDecomposition(forcePair.first);
-        vector<pair<double, Vec2D>> shearPair = eigenDecomposition(forcePair.second);
-
+        vector<pair<double, Vec2D>> compressivePair = eigenDecomposition(forcePair.second);
+        return {tensilePair, compressivePair};
     }
 }
 
-vector<Polyline> boundaryDirichlet = { {{Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}} };
-Vec2D crackTip = Vec2D(0.5, 0);
+
+
+Vec2D crackTip = Vec2D(400, 450);
 
 Vec2D deformLeftCorner( Vec2D point ) {
     double x = real(point);
     double y = imag(point);
-    if (x == 0 && y == 0) {
-        return Vec2D( x - (1 - x) * 0.2, y);
+    if (x == 200 && y == 450) {
+        return Vec2D( x - (600 - x) * 0.2, y);
     }
     else {
         return Vec2D(x, y);
     }
 }
 
+
 int main() {
     // Initialize SFML window
     sf::RenderWindow window(sf::VideoMode(WIDTH, HEIGHT), "Crack Propagation");
     window.setFramerateLimit(30);
+
+    sf::ConvexShape shape;
+    int pointSize = boundaryDirichlet[0].size();
+    shape.setPointCount(pointSize); 
+
+    for (size_t i = 0; i < pointSize; ++i) {
+        shape.setPoint(i, sf::Vector2f(real(boundaryDirichlet[0][i]), imag(boundaryDirichlet[0][i])));
+    }
+
+    shape.setFillColor(sf::Color::White);
+    shape.setOutlineThickness(2.f);
+    shape.setOutlineColor(sf::Color::Blue);
+
+    sf::CircleShape crackTipShape(5);
+    crackTipShape.setFillColor(sf::Color::Red);
+    crackTipShape.setPosition(real(crackTip) - crackTipShape.getRadius(), imag(crackTip) - crackTipShape.getRadius());
+    window.draw(crackTipShape);
+
+    // Start crack propagation
+    startCrackPropagation(boundaryDirichlet, deformLeftCorner, crackTip, window);
+    // pair<vector<pair<double, Vec2D>>, vector<pair<double, Vec2D>>> stressPair = startCrackPropagation(boundaryDirichlet, deformLeftCorner, crackTip, window);
+    // plotStressVector(stressPair.first, stressPair.second, crackTip, window);
 
     // Main loop
     while (window.isOpen()) {
@@ -69,20 +118,12 @@ int main() {
             if (event.type == sf::Event::Closed)
                 window.close();
         }
+
+        window.clear();
+        window.draw(shape);
+        window.draw(crackTipShape);
+        window.display();
     }
-
-    sf::ConvexShape shape;
-    int pointSize = boundaryDirichlet[0].size();
-    shape.setPointCount(pointSize); 
-
-    // Set each point
-    for (size_t i = 0; i < pointSize; ++i) {
-        shape.setPoint(i, sf::Vector2f(real(boundaryDirichlet[0][i]), imag(boundaryDirichlet[0][i])));
-    }
-
-    shape.setFillColor(sf::Color::Cyan);
-    shape.setOutlineThickness(2.f);
-    shape.setOutlineColor(sf::Color::Blue);
 
     return 0;
 }

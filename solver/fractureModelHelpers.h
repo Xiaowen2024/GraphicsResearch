@@ -104,7 +104,6 @@ inline Vec2D deform(Vec2D v) {
     return Vec2D(x + 0.4 * x * x, y);
 }
 
-
 using Polyline = vector<Vec2D>;
 vector<Polyline> newBoundaryDirichlet = {
     {
@@ -120,8 +119,6 @@ Vec2D intersectPolylines(Vec2D x, Vec2D v, double r, const vector<Polyline>& P, 
 
 Vec2D solve(Vec2D x0, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D)> g);
 
-vector<Polyline> boundaryDirichlet = { {{Vec2D(0, 0), Vec2D(100, 0), Vec2D(100, 100), Vec2D(0, 100), Vec2D(0, 0)}} };
-vector<Polyline> boundaryNeumann = {};
 
 inline double signedAngle(Vec2D x, const vector<Polyline>& P) {
     double Theta = 0.;
