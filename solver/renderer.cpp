@@ -15,21 +15,71 @@ const float INTERACTION_RADIUS = 20.0f;
 const float FAILURE_THRESHOLD = 10.0f; // Stress threshold for bond fail
 using namespace std;
 
-std::vector<sf::Vector2f> points = {
-    sf::Vector2f(200, 150),
-    sf::Vector2f(400, 150),
-    sf::Vector2f(600, 450),
-    sf::Vector2f(200, 450)
-};
+
 
 int main() {
+    std::vector<sf::Vector2f> points = std::vector<sf::Vector2f>();
+    points.push_back(sf::Vector2f(200, 150));
+    points.push_back(sf::Vector2f(600, 150));
+    points.push_back(sf::Vector2f(600, 450));
+    points.push_back(sf::Vector2f(200, 450));
+
+    sf::Vector2f crackTip = sf::Vector2f(400, 450);
     sf::RenderWindow window(sf::VideoMode(WIDTH, HEIGHT), "Crack Propagation (Boundary-Free)");
     window.setFramerateLimit(30); 
     sf::VertexArray vertices(sf::Points, points.size());
     for (size_t i = 0; i < points.size(); ++i) {
         vertices[i].position = sf::Vector2f(points[i].x, points[i].y);
-        vertices[i].color = sf::Color::White;
+        vertices[i].color = sf::Color::Blue;
     }
+    sf::VertexArray lines(sf::LinesStrip, points.size() + 1);
+    for (size_t i = 0; i < points.size(); ++i) {
+        lines[i].position = points[i];
+        lines[i].color = sf::Color::Red;
+    }
+    
+    lines[points.size()].position = points[0]; 
+    lines[points.size()].color = sf::Color::Red;
+    sf::VertexArray shape(sf::LinesStrip, points.size() + 1);
+    for (size_t i = 0; i < points.size(); ++i) {
+        shape[i].position = points[i];
+        shape[i].color = sf::Color::Blue;
+    }
+    shape[points.size()].position = points[0];
+    shape[points.size()].color = sf::Color::Blue;
+
+    sf::CircleShape crackTipShape(5);
+    crackTipShape.setFillColor(sf::Color::Green);
+    crackTipShape.setPosition(crackTip.x - crackTipShape.getRadius(), crackTip.y - crackTipShape.getRadius());
+    
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed)
+                window.close();
+        }
+
+        window.clear();
+        window.draw(vertices);
+        window.draw(shape);
+        window.draw(crackTipShape);
+        window.display();
+    }
+    
+
+    while (window.isOpen()) {
+        sf::Event event;
+        while (window.pollEvent(event)) {
+            if (event.type == sf::Event::Closed)
+                window.close();
+        }
+
+        window.clear();
+        window.draw(vertices);
+        window.draw(shape);
+        window.display();
+    }
+
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
