@@ -68,7 +68,13 @@
         "unordered_set": "cpp",
         "valarray": "cpp",
         "adolcforward": "cpp",
-        "functional": "cpp"
+        "functional": "cpp",
+        "any": "cpp",
+        "forward_list": "cpp",
+        "scoped_allocator": "cpp",
+        "span": "cpp",
+        "stack": "cpp",
+        "typeindex": "cpp"
     },
     "cmake.ignoreCMakeListsMissing": true
 }

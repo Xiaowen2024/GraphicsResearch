@@ -334,6 +334,8 @@ Vec2D deform( Vec2D v ) {
    return Vec2D(x + 0.4 * x * x, y );
 }
 
+vector<Vec2D> points = {{ Vec2D(0, 0), Vec2D(100, 0), Vec2D(100, 100), Vec2D(0, 100)}};
+
 int main( int argc, char** argv ) {
    string shape = "rect100_seed_1_65536";
 

@@ -14,9 +14,9 @@
 #include <random>
 #include <vector>
 #include <fstream>
-#include <chrono> // Added for timing
+#include <chrono> 
 using namespace std;
-using namespace std::chrono; // Added for timing
+using namespace std::chrono; 
 
 // the constant "infinity" is used as a maximum value in several calculations
 const double infinity = numeric_limits<double>::infinity();
