@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <cstdlib>
+#include "WostCrackPropagation.cpp"
 
 
 // Constants
@@ -101,6 +102,8 @@ int main() {
 
         window.display();
     }
+
+    Vec2D crackTipForce = getForce(Vec2D(crackTip.x, crackTip.y), Vec2D(-1, 0));
 
     return 0;
 }

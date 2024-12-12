@@ -4,7 +4,7 @@
 // Conditions" (2023), assuming no source term and zero-Neumann conditions.
 // NOTE: this code makes a few shortcuts for the sake of code brevity; may
 // be more suitable for tutorials than for production code/evaluation.
-// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStDeformationGradientRect.cpp -o wost-dg-rect
+// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStCrackPropagation.cpp -o wost-cp
 
 #include <algorithm>
 #include <array>
@@ -313,6 +313,23 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
+
+vector<Vec2D> getStress(double lam, double mu, double trace, double dudx, double dudy, double dvdx, double dvdy) {
+   return  matrixAdd(vector<Vec2D>{Vec2D{ 1 * lam * trace , 0}, Vec2D{0, 1 * lam * trace}}, vector<Vec2D>{Vec2D{2 * mu * dudx, 2 * mu * dudy}, Vec2D{2 * mu * dvdx, 2 * mu * dvdy}});
+}
+
+
+vector<Vec2D> getSymmetricMatrix(Vec2D v) {
+   if (sqrt(norm(v)) == 0) {
+      return vector<Vec2D>{Vec2D{0,  0}, Vec2D{0, 0}};
+   }
+   else {
+      vector<Vec2D> op = outerProduct(v, v);
+      double length = sqrt(norm(v));
+      return vector<Vec2D>{Vec2D{real(op[0]) / length, imag(op[0]) / length}, Vec2D{real(op[1]) / length, imag(op[1]) / length}};
+   }
+}
+
 vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& stressFile) {
    double x = real(point);
    double y = imag(point);
@@ -349,7 +366,6 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
 
-
    strainFile << "X,Y,F11,F12,F21,F22\n";
    strainFile << x << "," << y << ",";
    strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
@@ -358,6 +374,34 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    stressFile << "X,Y,Stress\n";
    stressFile << x << "," << y << "," << real(stress[0]) << imag(stress[0]) << real(stress[1]) << imag(stress[1]) << "\n";
 
+   return stress;
+}
+
+vector<Vec2D> returnDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform) {
+   double x = real(point);
+   double y = imag(point);
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+   Vec2D solved_vec = nan; 
+   Vec2D left{ x - h/2, y };
+   Vec2D right{ x + h/2, y };
+   Vec2D top{ x, y + h/2 };
+   Vec2D bottom{ x, y - h/2 };
+   vector<Vec2D> neighbors = {left, right, top, bottom};
+   vector<Vec2D> neighbors_deformed = {};
+   for ( int i = 0; i < 4; i++ ) {
+      if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
+         solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
+         neighbors_deformed.push_back(solved_vec);
+      }
+      else {
+         return vector<Vec2D>{nan, nan};
+      }
+   }
+   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
+   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
+   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
+   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+   vector<Vec2D> stress = getStress(1.0, 0.1, dudx + dvdy, dudx, dudy, dvdx, dvdy);
    return stress;
 }
 
@@ -413,71 +457,36 @@ Vec2D determineCrackPropagationDirection(vector<Vec2D> separationTensor, double 
    }
 }
 
-
-
-vector<Vec2D> getSymmetricMatrix(Vec2D v) {
-   if (sqrt(norm(v)) == 0) {
-      return vector<Vec2D>{Vec2D{0,  0}, Vec2D{0, 0}};
-   }
-   else {
-      vector<Vec2D> op = outerProduct(v, v);
-      double length = sqrt(norm(v));
-      return vector<Vec2D>{Vec2D{real(op[0]) / length, imag(op[0]) / length}, Vec2D{real(op[1]) / length, imag(op[1]) / length}};
-   }
-}
-
-vector<Vec2D> getStress(double lam, double mu, double trace, double dudx, double dudy, double dvdx, double dvdy) {
-   double trace =  dudx + dvdy;
-   return  matrixAdd(vector<Vec2D>{Vec2D{ 1 * lam * trace , 0}, Vec2D{0, 1 * lam * trace}}, vector<Vec2D>{Vec2D{2 * mu * dudx, 2 * mu * dudy}, Vec2D{2 * mu * dvdx, 2 * mu * dvdy}});
-}
-
-
-
 Vec2D deform( Vec2D v ) {
    double x = real(v);
    double y = imag(v);
    return Vec2D(x + 0.4 * x * x, y );
 }
 
-int main( int argc, char** argv ) {
-   string shape = "rect100_seed_1_65536";
 
-   srand( time(NULL) );
-
-   int s = 16; // make it smaller to speed up
-   auto start = high_resolution_clock::now(); // Added for timing
+Vec2D getForce(Vec2D position, Vec2D normal, function<Vec2D(Vec2D)> deform, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann) {
+   double x = real(position);
+   double y = imag(position);
    double h = 10;
-
-   // deformation_gradient_{shape}.csv
-   std::ofstream strainFile("../output/deformation_gradient_" + shape + "_10.csv");
-   std::ofstream neighbourFile("../output/deformation_gradient_" + shape + "_neighbour_displacements.csv");
-   std::ofstream displacementFile("../output/deformation_gradient_" + shape + "_displacements.csv");
-   std::ofstream stressFile ("../output/deformation_gradient_" + shape + "_stresses.csv");
-
-   for( int j = 0; j < s; j++ )
-   {
-      cerr << "row " << j << " of " << s << endl;
-      for( int i = 0; i < s; i++ )
-      {
-         Vec2D x0(((double)i / (s - 1)) * 200 - 100,
-                 ((double)j / (s - 1)) * 200 - 100);
-         double x = real(x0);
-         double y = imag(x0);
-         double lam = 1.0;
-         double mu = 1.0;
-         Vec2D left{ x - h/2, y };
-         Vec2D right{ x + h/2, y };
-         Vec2D top{ x, y + h/2 };
-         Vec2D bottom{ x, y - h/2 };
-         Vec2D solved_vec = NAN;
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile, stressFile);
-            solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deform);
-            displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
-         }
-      } 
+   Vec2D left{ x - h/2, y };
+   Vec2D right{ x + h/2, y };
+   Vec2D top{ x, y + h/2 };
+   Vec2D bottom{ x, y - h/2 };
+   if( insideDomain(position, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
+      vector<Vec2D> stress = returnDeformationGradientAndStress(position, h, deform);
+      vector<pair<double, Vec2D>> eigenpairs = eigenDecomposition(stress);
+      pair<vector<Vec2D>, vector<Vec2D>> forcePairs = forceDecomposition(stress, eigenpairs);
+      vector<Vec2D> tensileComponents = forcePairs.first;
+      cout << "tensile components" << tensileComponents[0] << " " << tensileComponents[1] << endl;
+      vector<Vec2D> compressiveComponents = forcePairs.second;
+      cout << "compressive components" << compressiveComponents[0] << " " << compressiveComponents[1] << endl;
+      Vec2D tensileForce = getDirectHomogenousForce(tensileComponents, Vec2D{-1, 0});
+      cout << "tensile force" << tensileForce << endl;
+      return tensileForce;
    }
-   auto stop = high_resolution_clock::now(); // Added for timing
-   auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
-   cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
+   return Vec2D(0, 0);
+}
+
+int main(){
+   return 0;
 }
