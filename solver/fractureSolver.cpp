@@ -93,6 +93,24 @@ float calculateCaseAStressIntensityFactor(float crackLength, float planeWidth, v
     return K_I;
 }
 
+float calciulateCriticalLength(float crackLength, float planeWidth, vector<Vec2D> stressTensor, Vec2D normal, float KIC){
+    float normalStress = getNormalStress(stressTensor, normal);
+    float alpha = crackLength / planeWidth;
+    float secant = 1 / cos( M_PI * alpha / 2);
+    float Y = sqrt(secant); 
+    float denominator = Y * sqrt(M_PI) * normalStress;
+    return (KIC / denominator) * (KIC / denominator);
+}
+
+// assume we have constant force during a single cycle of loading 
+// the result is da/dN where N is the number of cycles 
+// TODO: modify the formula according to static loading 
+float calculateCrackGrowthDirectionAndRate(vector<Vec2D> stressTensor, float materialConstant, float parisExponent, float SIF) {
+    Vec2D growthDirection = determineCrackPropagationDirection(stressTensor);
+    // calculate the growth rate according to Paris's law 
+    float rate = materialConstant * pow(SIF, parisExponent);
+}
+
 int main() {
     // Initialize SFML window
     sf::RenderWindow window(sf::VideoMode(WIDTH, HEIGHT), "Crack Propagation");

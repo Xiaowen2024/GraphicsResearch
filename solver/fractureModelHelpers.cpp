@@ -225,13 +225,7 @@ vector<Vec2D> getSeparationTensor(Vec2D tensileForce, Vec2D compressiveForce, ve
 }
 
 
-Vec2D determineCrackPropagationDirection(vector<Vec2D> separationTensor, double threshold) {
-   vector<pair<double, Vec2D>> eigenpairs = eigenDecomposition(separationTensor);
-   if  (eigenpairs[0].first > threshold) {
-      return eigenpairs[0].second;
-   }
-   else {
-      return Vec2D(0, 0);
-   }
+Vec2D determineCrackPropagationDirection(vector<Vec2D> stressTensor) {
+   vector<pair<double, Vec2D>> eigenpairs = eigenDecomposition(stressTensor);
+   return eigenpairs[0].second;
 }
-
