@@ -161,26 +161,20 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
          return vector<Vec2D>{nan, nan};
       }
    }
-
    neighbourFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
    neighbourFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
    neighbourFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
    neighbourFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
-
    double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
    double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
-
-
    strainFile << "X,Y,F11,F12,F21,F22\n";
    strainFile << x << "," << y << ",";
    strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
-
    vector<Vec2D> stress = getStress(1.0, 0.1, dudx + dvdy, dudx, dudy, dvdx, dvdy);
    stressFile << "X,Y,Stress\n";
    stressFile << x << "," << y << "," << real(stress[0]) << imag(stress[0]) << real(stress[1]) << imag(stress[1]) << "\n";
-
    return stress;
 }
 
@@ -217,6 +211,10 @@ Vec2D getDirectHomogenousForce(vector<Vec2D> stressComponent, Vec2D normal) {
    return matrixVectorMultiply(stressComponent, normal);
 }
 
+float getNormalStress(vector<Vec2D> stressTensor, Vec2D normal){
+   return real(normal) * real(normal) * real(stressTensor[0]) + imag(normal) * imag(normal) * imag(stressTensor[1]) + 2 * real(normal) * imag(normal) * imag(stressTensor[0]);
+}
+
 vector<Vec2D> getSeparationTensor(Vec2D tensileForce, Vec2D compressiveForce, vector<Vec2D> neighbourTensileForces, vector<Vec2D> neighbourCompressiveForces) {
    vector<Vec2D> sum =  matrixSubstract(getSymmetricMatrix(compressiveForce), getSymmetricMatrix(tensileForce));
    for (int i = 0; i < neighbourTensileForces.size(); i++) {
@@ -225,6 +223,7 @@ vector<Vec2D> getSeparationTensor(Vec2D tensileForce, Vec2D compressiveForce, ve
    }
    return scalarMultiplyMatrix(1.0 / 2, sum);
 }
+
 
 Vec2D determineCrackPropagationDirection(vector<Vec2D> separationTensor, double threshold) {
    vector<pair<double, Vec2D>> eigenpairs = eigenDecomposition(separationTensor);

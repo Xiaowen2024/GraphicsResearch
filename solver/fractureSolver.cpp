@@ -10,6 +10,7 @@
 #include <fstream>
 #include <chrono> 
 #include <SFML/Graphics.hpp>
+#include <cmath>
 using namespace std;
 using namespace std::chrono; 
 
@@ -68,8 +69,6 @@ pair<vector<pair<double, Vec2D>>, vector<pair<double, Vec2D>>> startCrackPropaga
     }
 }
 
-
-
 Vec2D crackTip = Vec2D(400, 450);
 
 Vec2D deformLeftCorner( Vec2D point ) {
@@ -83,6 +82,16 @@ Vec2D deformLeftCorner( Vec2D point ) {
     }
 }
 
+// calculate case a: long strip, central crack, tensile stress 
+// TODO: need to confirm the correctness of normal stress
+float calculateCaseAStressIntensityFactor(float crackLength, float planeWidth, vector<Vec2D> stressTensor, Vec2D normal){
+    float normalStress = getNormalStress(stressTensor, normal);
+    float alpha = crackLength / planeWidth;
+    float secant = 1 / cos( M_PI * alpha / 2);
+    float Y = sqrt(secant); 
+    float K_I = Y * sqrt(alpha * M_PI) * normalStress;
+    return K_I;
+}
 
 int main() {
     // Initialize SFML window
