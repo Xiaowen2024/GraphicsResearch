@@ -116,7 +116,6 @@ Vec2D solve( Vec2D x0, // evaluation point
       sum_x += real(eval_vec);
       sum_y += imag(eval_vec);
    }
-   std::cout << i << std::endl;
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 

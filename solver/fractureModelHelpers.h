@@ -54,6 +54,7 @@ inline vector<Vec2D> matrixMultiply(vector<Vec2D> A, vector<Vec2D> B) {
 inline Vec2D matrixVectorMultiply(vector<Vec2D> A, Vec2D v) {
     return Vec2D(dot(A[0], v), dot(A[1], v));
 }
+
 inline vector<Vec2D> scalarMultiplyMatrix(double scalar, vector<Vec2D> matrix) {
     vector<Vec2D> result;
     for (int i = 0; i < matrix.size(); i++) {
@@ -98,12 +99,6 @@ inline vector<Vec2D> getStress(double lam, double mu, double trace, double dudx,
     return matrixAdd(vector<Vec2D>{Vec2D{1 * lam * trace, 0}, Vec2D{0, 1 * lam * trace}}, vector<Vec2D>{Vec2D{2 * mu * dudx, 2 * mu * dudy}, Vec2D{2 * mu * dvdx, 2 * mu * dvdy}});
 }
 
-inline Vec2D deform(Vec2D v) {
-    double x = real(v);
-    double y = imag(v);
-    return Vec2D(x + 0.4 * x * x, y);
-}
-
 using Polyline = vector<Vec2D>;
 vector<Polyline> newBoundaryDirichlet = {
     {
@@ -134,7 +129,7 @@ Vec2D displacement(Vec2D v);
 
 bool insideDomain(Vec2D x, const vector<Polyline>& boundaryDirichlet, const vector<Polyline>& boundaryNeumann);
 
-vector<Vec2D> getDeformationGradientAndStress(Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& stressFile);
+vector<Vec2D> getDeformationGradientAndStress(Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& stressFile, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann);
 
 vector<pair<double, Vec2D>> eigenDecomposition(vector<Vec2D> A);
 
