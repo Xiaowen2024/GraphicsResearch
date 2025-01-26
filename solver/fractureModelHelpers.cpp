@@ -202,6 +202,7 @@ vector<Vec2D> returnStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform
    double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+   std:: cout << "dudx: " << dudx << " dudy: " << dudy << " dvdx: " << dvdx << " dvdy: " << dvdy << std::endl;
    vector<Vec2D> stress = getStress(1.0, 0.1, dudx + dvdy, dudx, dudy, dvdx, dvdy);
    return stress;
 }

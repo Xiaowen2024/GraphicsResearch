@@ -39,30 +39,37 @@ vector<Polyline> boundaryNeumann = {};
 const int width = 1;
 const int height = 1;
 std::vector<float> stressData(width * height * 100);
-
+std::vector<float> texCoords;
 void generateStressData() {
     for ( float x = -0.5; x <= 0.5; x += 0.1 ) {
         for ( float y = -0.5; y <= 0.5; y += 0.1 ) {
             Vec2D point(x, y);
             Vec2D deformedPoint = deform(point);
             vector<Vec2D> stress = returnStress(deformedPoint, 0.01, deform, boundaryDirichlet, boundaryNeumann);
+            if (std::isnan(real(stress[0])) || std::isnan(imag(stress[0])) || std::isnan(real(stress[1])) || std::isnan(imag(stress[1]))) {
+                continue;
+            } 
+            else {
+                texCoords.push_back(x);
+                texCoords.push_back(y);
+            }
             float stressMagnitude = sqrt(real(stress[0]) * real(stress[0]) + imag(stress[0]) * imag(stress[0]) + real(stress[1]) * real(stress[1]) + imag(stress[1]) * imag(stress[1]));
             int yIndex = (y + 0.5) * 10;
             int xIndex = (x + 0.5) * 10;
             stressData[ y * width + x ] = stressMagnitude;
-            std::cout << "Stress at " << x << ", " << y << " is " << stressMagnitude << std::endl;
         }
-    }
+    } 
     float maxStress = 0.0f;
     for (const auto& stress : stressData) {
         if (stress > maxStress) {
             maxStress = stress;
         }
     }
+    std::cout << "Max stress: " << maxStress << std::endl;
     
     for (int i = 0; i < stressData.size(); ++i) {
         stressData[i] /= maxStress;
-        std::cout << "Stress at " << i << stressData[i] << std::endl;
+        // std::cout << "Stress at " << i << stressData[i] << std::endl;
     }
 }
 
@@ -185,6 +192,8 @@ void render() {
         -.5f, -.5f, 0.0f,
     };
 
+    // generate a vector mapping geometry coordinates, colors, and texture coordinates
+    float combined[sizeof(vertices) + sizeof(stressData) + sizeof(texCoords)];
     int numVertices = sizeof(vertices) / sizeof(vertices[0]) / 3;
 
     for (int i = 0; i < numVertices; ++i) {
