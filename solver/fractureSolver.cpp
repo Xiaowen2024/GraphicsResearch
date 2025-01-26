@@ -125,6 +125,7 @@ void growCrackTip(Vec2D crackTip, float crackLength, float planeWidth, Vec2D nor
         std::cout << "crack grew" << std::endl;
         std::cout << "stress magnitude: " << getNormalStress(stressTensor, normal) << std::endl;
         crackLength = crackLength + dot(normal, growthInfo.first) * growthInfo.second;
+        std::cout << "growth direction " << real(growthInfo.first) << " " << imag(growthInfo.second) << std::endl;
         criticalLength = calciulateCriticalLength(crackLength, planeWidth, stressTensor, normal, KIC);
         SIF = calculateCaseAStressIntensityFactor(crackLength, planeWidth, stressTensor, normal);
         std::cout << "Stress Intensity Factor (SIF): " << SIF << std::endl;
@@ -132,7 +133,6 @@ void growCrackTip(Vec2D crackTip, float crackLength, float planeWidth, Vec2D nor
         std::cout << "crackTip: " << real(crackTip) << ", " << imag(crackTip) << " with length: " << crackLength << endl;
     }
 }
-
 
 Vec2D deform(Vec2D point) {
     double x = real(point);

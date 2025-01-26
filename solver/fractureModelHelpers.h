@@ -28,24 +28,27 @@ inline Vec2D rotate90(Vec2D u) { return Vec2D(-imag(u), real(u)); }
 inline double dot(Vec2D u, Vec2D v) { return real(u) * real(v) + imag(u) * imag(v); }
 inline double cross(Vec2D u, Vec2D v) { return real(u) * imag(v) - imag(u) * real(v); }
 inline vector<Vec2D> outerProduct(Vec2D u, Vec2D v) {
-    return vector<Vec2D>{Vec2D(real(u) * real(v), real(u) * imag(v)), Vec2D(imag(u) * real(v), imag(u) * imag(v))};
+    return vector<Vec2D>({Vec2D(real(u) * real(v), real(u) * imag(v)), Vec2D(imag(u) * real(v), imag(u) * imag(v))});
 }
 inline vector<Vec2D> matrixAdd(vector<Vec2D> A, vector<Vec2D> B) {
-    vector<Vec2D> result = {};
+    vector<Vec2D> result;
+    result.reserve(A.size());
     for (int i = 0; i < A.size(); i++) {
         result.push_back(A[i] + B[i]);
     }
     return result;
 }
 inline vector<Vec2D> matrixSubstract(vector<Vec2D> A, vector<Vec2D> B) {
-    vector<Vec2D> result = {};
+    vector<Vec2D> result;
+    result.reserve(A.size());
     for (int i = 0; i < A.size(); i++) {
         result.push_back(A[i] - B[i]);
     }
     return result;
 }
 inline vector<Vec2D> matrixMultiply(vector<Vec2D> A, vector<Vec2D> B) {
-    vector<Vec2D> result = {};
+    vector<Vec2D> result;
+    result.reserve(A.size());
     for (int i = 0; i < A.size(); i++) {
         result.push_back(Vec2D(dot(A[i], B[0]), dot(A[i], B[1])));
     }
@@ -65,7 +68,7 @@ inline vector<Vec2D> scalarMultiplyMatrix(double scalar, vector<Vec2D> matrix) {
 
 inline Vec2D closestPoint(Vec2D x, Vec2D a, Vec2D b) {
     Vec2D u = b - a;
-    double t = clamp(dot(x - a, u) / dot(u, u), 0.0, 1.0);
+    double t = std::clamp(dot(x - a, u) / dot(u, u), 0.0, 1.0);
     return (1.0 - t) * a + t * b;
 }
 
@@ -87,7 +90,7 @@ inline double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
 
 inline vector<Vec2D> getSymmetricMatrix(Vec2D v) {
     if (sqrt(norm(v)) == 0) {
-        return vector<Vec2D>{Vec2D{0, 0}, Vec2D{0, 0}};
+        return vector<Vec2D>({Vec2D{0, 0}, Vec2D{0, 0}});
     } else {
         vector<Vec2D> op = outerProduct(v, v);
         double length = sqrt(norm(v));

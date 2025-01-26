@@ -178,6 +178,35 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
 }
 
 
+vector<Vec2D> returnStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann) {
+   double x = real(point);
+   double y = imag(point);
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+   Vec2D solved_vec = nan; 
+   Vec2D left{ x - h/2, y };
+   Vec2D right{ x + h/2, y };
+   Vec2D top{ x, y + h/2 };
+   Vec2D bottom{ x, y - h/2 };
+   vector<Vec2D> neighbors = {left, right, top, bottom};
+   vector<Vec2D> neighbors_deformed = {};
+   for ( int i = 0; i < 4; i++ ) {
+      if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
+         solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
+         neighbors_deformed.push_back(solved_vec);
+      }
+      else {
+         return vector<Vec2D>{nan, nan};
+      }
+   }
+   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
+   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
+   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
+   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+   vector<Vec2D> stress = getStress(1.0, 0.1, dudx + dvdy, dudx, dudy, dvdx, dvdy);
+   return stress;
+}
+
+
 vector<pair<double, Vec2D>> eigenDecomposition(vector<Vec2D> A) {
    double a = 1;
    double b = -real(A[0]) - imag(A[1]);

@@ -16,8 +16,6 @@ const float INTERACTION_RADIUS = 20.0f;
 const float FAILURE_THRESHOLD = 10.0f; // Stress threshold for bond fail
 using namespace std;
 
-
-
 int main() {
     std::vector<sf::Vector2f> points = std::vector<sf::Vector2f>();
     points.push_back(sf::Vector2f(200, 150));

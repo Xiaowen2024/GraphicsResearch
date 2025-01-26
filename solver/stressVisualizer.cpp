@@ -8,7 +8,10 @@
 #include <complex>
 using namespace std;
 using Vec2D = complex<double>;
-//clang++ stressVisualizer.cpp -framework OpenGL -framework GLUT -o stressVisualizer
+#include "fractureModelHelpers.cpp"
+#include "fractureModelHelpers.h"
+//c++ stressVisualizer.cpp -std=c++17 -I/System/Library/Frameworks/OpenGL.framework/Headers -I/System/Library/Frameworks/GLUT.framework/Headers -o stressVisualizer -L/System/Library/Frameworks/OpenGL.framework/Libraries -framework OpenGL -framework GLUT
+
 
 // Function prototypes
 std::string loadShaderSource(const std::string& filepath);
@@ -18,6 +21,65 @@ void render();
 
 // Global shader program ID
 unsigned int shaderProgram;
+
+
+Vec2D deform(Vec2D point) {
+    double x = real(point);
+    double y = imag(point);
+    if (x < 0){
+        return Vec2D(x - 0.1, y);
+    }
+    else if (x > 0){
+        return Vec2D(x + 0.1, y);
+    }
+}
+
+vector<Polyline> boundaryDirichlet = { {{Vec2D(-0.5, -0.5), Vec2D(0.5, -0.5), Vec2D(0.5, 0.5), Vec2D(-0.5, 0.5), Vec2D(-0.5, -0.5)}} };
+vector<Polyline> boundaryNeumann = {};
+const int width = 1;
+const int height = 1;
+std::vector<float> stressData(width * height * 100);
+
+void generateStressData() {
+    for ( float x = -0.5; x <= 0.5; x += 0.1 ) {
+        for ( float y = -0.5; y <= 0.5; y += 0.1 ) {
+            Vec2D point(x, y);
+            Vec2D deformedPoint = deform(point);
+            vector<Vec2D> stress = returnStress(deformedPoint, 0.01, deform, boundaryDirichlet, boundaryNeumann);
+            float stressMagnitude = sqrt(real(stress[0]) * real(stress[0]) + imag(stress[0]) * imag(stress[0]) + real(stress[1]) * real(stress[1]) + imag(stress[1]) * imag(stress[1]));
+            int yIndex = (y + 0.5) * 10;
+            int xIndex = (x + 0.5) * 10;
+            stressData[ y * width + x ] = stressMagnitude;
+            std::cout << "Stress at " << x << ", " << y << " is " << stressMagnitude << std::endl;
+        }
+    }
+    float maxStress = 0.0f;
+    for (const auto& stress : stressData) {
+        if (stress > maxStress) {
+            maxStress = stress;
+        }
+    }
+    
+    for (int i = 0; i < stressData.size(); ++i) {
+        stressData[i] /= maxStress;
+        std::cout << "Stress at " << i << stressData[i] << std::endl;
+    }
+}
+
+GLuint uploadStressTexture() {
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    int width = 1;
+    int height = 1;
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED, GL_FLOAT, stressData.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    return texture;
+}
+
 
 int main(int argc, char** argv) {
     // Initialize GLUT
@@ -65,6 +127,7 @@ unsigned int compileShader(const std::string& source, GLenum shaderType) {
     return shader;
 }
 
+
 unsigned int createShaderProgram(const std::string& vertexPath, const std::string& fragmentPath) {
     std::string vertexCode = loadShaderSource(vertexPath);
     std::string fragmentCode = loadShaderSource(fragmentPath);
@@ -91,24 +154,26 @@ unsigned int createShaderProgram(const std::string& vertexPath, const std::strin
     return shaderProgram;
 }
 
+GLuint stressTexture;
+void initializeStressTexture(){
+    generateStressData();
+    // stressTexture = uploadStressTexture();
+}
 
-Vec2D deform(Vec2D point) {
-    double x = real(point);
-    double y = imag(point);
-    if (x < 0){
-        return Vec2D(x - 0.1, y);
-    }
-    else if (x > 0){
-        return Vec2D(x + 0.1, y);
-    }
+void cleanup() {
+    glDeleteTextures(1, &stressTexture);
 }
 
 void render() {
-    // Clear the screen
+    initializeStressTexture();
     glClear(GL_COLOR_BUFFER_BIT);
+    // glUniform1i(glGetUniformLocation(shaderProgram, "stressTexture"), 0);
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, stressTexture);
 
     // Use the shader program
     glUseProgram(shaderProgram);
+
  // { {{Vec2D(-3, -2), Vec2D(3, -2), Vec2D(3, 2), Vec2D(-3, 2), Vec2D(-3, -2)}} };
     // Define a rectangle using OpenGL coordinates
     float vertices[] = {
@@ -148,14 +213,10 @@ void render() {
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Draw the triangle
     glBindVertexArrayAPPLE(VAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // Clean up
     glBindVertexArrayAPPLE(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    // Swap buffers
     glutSwapBuffers();
 }
