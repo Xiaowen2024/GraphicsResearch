@@ -33,6 +33,41 @@ void render();
 unsigned int shaderProgram;
 
 
+void checkGLError(const std::string& functionName) {
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR) {
+        std::cerr << "OpenGL error in " << functionName << ": ";
+        
+        // Handle specific error codes
+        switch (error) {
+            case GL_INVALID_ENUM:
+                std::cerr << "GL_INVALID_ENUM";
+                break;
+            case GL_INVALID_VALUE:
+                std::cerr << "GL_INVALID_VALUE";
+                break;
+            case GL_INVALID_OPERATION:
+                std::cerr << "GL_INVALID_OPERATION";
+                break;
+            case GL_STACK_OVERFLOW:
+                std::cerr << "GL_STACK_OVERFLOW";
+                break;
+            case GL_STACK_UNDERFLOW:
+                std::cerr << "GL_STACK_UNDERFLOW";
+                break;
+            case GL_OUT_OF_MEMORY:
+                std::cerr << "GL_OUT_OF_MEMORY";
+                break;
+            case GL_INVALID_FRAMEBUFFER_OPERATION:
+                std::cerr << "GL_INVALID_FRAMEBUFFER_OPERATION";
+                break;
+            default:
+                std::cerr << "Unknown error";
+        }
+        std::cerr << std::endl;
+    }
+}
+
 Vec2D deform(Vec2D point) {
     double x = real(point);
     double y = imag(point);
@@ -48,7 +83,7 @@ vector<Polyline> boundaryDirichlet = { {{Vec2D(-0.5, -0.5), Vec2D(0.5, -0.5), Ve
 vector<Polyline> boundaryNeumann = {};
 const int width = 1;
 const int height = 1;
-std::vector<float> stressData(width * height * 100);
+std::vector<float> stressData;
 std::vector<float> texCoords;
 // void generateStressData() {
 //     for ( float x = -0.5; x <= 0.5; x += 0.1 ) {
@@ -83,27 +118,50 @@ std::vector<float> texCoords;
 //     }
 // }
 void generateStressData() {
+    vector<float> stressMagnitudeVector;
     for (float x = -0.5; x <= 0.5; x += 0.1) {
         for (float y = -0.5; y <= 0.5; y += 0.1) {
             Vec2D point(x, y);
             Vec2D deformedPoint = deform(point);
             vector<Vec2D> stress = returnStress(deformedPoint, 0.01, deform, boundaryDirichlet, boundaryNeumann);
 
-            if (std::isnan(real(stress[0])) || std::isnan(imag(stress[0])) || std::isnan(real(stress[1])) || std::isnan(imag(stress[1]))) {
-                continue;
-            }
+           
 
             // Map the x, y coordinates to texture coordinates
             texCoords.push_back((x + 0.5) / 1.0);  // Normalize the x coordinate to [0, 1]
             texCoords.push_back((y + 0.5) / 1.0);  // Normalize the y coordinate to [0, 1]
 
-            // Calculate the stress magnitude
-            float stressMagnitude = sqrt(real(stress[0]) * real(stress[0]) + imag(stress[0]) * imag(stress[0]) + 
+
+            if (std::isnan(real(stress[0])) || std::isnan(imag(stress[0])) || std::isnan(real(stress[1])) || std::isnan(imag(stress[1]))) {
+                stressMagnitudeVector.push_back(0.0f);
+            }
+            else {
+                float stressMagnitude = sqrt(real(stress[0]) * real(stress[0]) + imag(stress[0]) * imag(stress[0]) + 
                                          real(stress[1]) * real(stress[1]) + imag(stress[1]) * imag(stress[1]));
 
-            int yIndex = (y + 0.5) * 10;
-            int xIndex = (x + 0.5) * 10;
-            stressData[yIndex * width + xIndex] = stressMagnitude;
+                int yIndex = (y + 0.5) * 10;
+                int xIndex = (x + 0.5) * 10;
+                
+                int offset = (y * width + x) * 4;
+                stressData[offset] = stressMagnitude * 255;
+                stressData[offset + 1] = stressMagnitude * 255;
+                stressData[offset + 2] = stressMagnitude * 255;
+                stressData[offset + 3] = 255;
+                stressMagnitudeVector.push_back(stressMagnitude);
+            }
+
+            float maxStress = 0.0f;
+            for (const auto& stress : stressData) {
+                if (stress > maxStress) {
+                    maxStress = stress;
+                }
+            }
+
+            for (int i = 0; i < stressData.size(); i += 4) {
+                stressData[i] /= maxStress;
+                stressData[i + 1] /= maxStress;
+                stressData[i + 2] /= maxStress;
+            }
         }
     }
 }
@@ -116,6 +174,7 @@ GLuint uploadStressTexture() {
     int texWidth = 10; 
     int texHeight = 10;
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, texWidth, texHeight, 0, GL_RED, GL_FLOAT, stressData.data());
+    checkGLError("glTexImage2D");
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -125,19 +184,16 @@ GLuint uploadStressTexture() {
 
 
 int main(int argc, char** argv) {
-    
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // Core profile for OpenGL 3.3
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);  // Important for macOS
-
-
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowSize(800, 600);
     glutCreateWindow("OpenGL Shader Example");
+   
 
-    const GLubyte* version = glGetString(GL_VERSION);
 
     // Load and compile shaders
     shaderProgram = createShaderProgram("vertex.glsl", "frag.glsl");
