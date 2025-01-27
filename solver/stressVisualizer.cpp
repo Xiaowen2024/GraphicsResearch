@@ -5,12 +5,22 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
 #include <GLUT/glut.h>
+#include <GLFW/glfw3.h>
 #include <complex>
 using namespace std;
 using Vec2D = complex<double>;
 #include "fractureModelHelpers.cpp"
 #include "fractureModelHelpers.h"
-//c++ stressVisualizer.cpp -std=c++17 -I/System/Library/Frameworks/OpenGL.framework/Headers -I/System/Library/Frameworks/GLUT.framework/Headers -o stressVisualizer -L/System/Library/Frameworks/OpenGL.framework/Libraries -framework OpenGL -framework GLUT
+//c++ stressVisualizer.cpp -std=c++17 \
+  -I/System/Library/Frameworks/OpenGL.framework/Headers \
+  -I/System/Library/Frameworks/GLUT.framework/Headers \
+  -I/opt/homebrew/Cellar/glfw/3.4/include \
+  -o stressVisualizer \
+  -L/System/Library/Frameworks/OpenGL.framework/Libraries \
+  -L/opt/homebrew/Cellar/glfw/3.4/lib \
+  -framework OpenGL \
+  -framework GLUT \
+  -lglfw -w
 
 
 // Function prototypes
@@ -40,46 +50,72 @@ const int width = 1;
 const int height = 1;
 std::vector<float> stressData(width * height * 100);
 std::vector<float> texCoords;
+// void generateStressData() {
+//     for ( float x = -0.5; x <= 0.5; x += 0.1 ) {
+//         for ( float y = -0.5; y <= 0.5; y += 0.1 ) {
+//             Vec2D point(x, y);
+//             Vec2D deformedPoint = deform(point);
+//             vector<Vec2D> stress = returnStress(deformedPoint, 0.01, deform, boundaryDirichlet, boundaryNeumann);
+//             if (std::isnan(real(stress[0])) || std::isnan(imag(stress[0])) || std::isnan(real(stress[1])) || std::isnan(imag(stress[1]))) {
+//                 continue;
+//             } 
+//             else {
+//                 texCoords.push_back(x);
+//                 texCoords.push_back(y);
+//             }
+//             float stressMagnitude = sqrt(real(stress[0]) * real(stress[0]) + imag(stress[0]) * imag(stress[0]) + real(stress[1]) * real(stress[1]) + imag(stress[1]) * imag(stress[1]));
+//             int yIndex = (y + 0.5) * 10;
+//             int xIndex = (x + 0.5) * 10;
+//             stressData[ y * width + x ] = stressMagnitude;
+//         }
+//     } 
+//     float maxStress = 0.0f;
+//     for (const auto& stress : stressData) {
+//         if (stress > maxStress) {
+//             maxStress = stress;
+//         }
+//     }
+//     std::cout << "Max stress: " << maxStress << std::endl;
+    
+//     for (int i = 0; i < stressData.size(); ++i) {
+//         stressData[i] /= maxStress;
+//         // std::cout << "Stress at " << i << stressData[i] << std::endl;
+//     }
+// }
 void generateStressData() {
-    for ( float x = -0.5; x <= 0.5; x += 0.1 ) {
-        for ( float y = -0.5; y <= 0.5; y += 0.1 ) {
+    for (float x = -0.5; x <= 0.5; x += 0.1) {
+        for (float y = -0.5; y <= 0.5; y += 0.1) {
             Vec2D point(x, y);
             Vec2D deformedPoint = deform(point);
             vector<Vec2D> stress = returnStress(deformedPoint, 0.01, deform, boundaryDirichlet, boundaryNeumann);
+
             if (std::isnan(real(stress[0])) || std::isnan(imag(stress[0])) || std::isnan(real(stress[1])) || std::isnan(imag(stress[1]))) {
                 continue;
-            } 
-            else {
-                texCoords.push_back(x);
-                texCoords.push_back(y);
             }
-            float stressMagnitude = sqrt(real(stress[0]) * real(stress[0]) + imag(stress[0]) * imag(stress[0]) + real(stress[1]) * real(stress[1]) + imag(stress[1]) * imag(stress[1]));
+
+            // Map the x, y coordinates to texture coordinates
+            texCoords.push_back((x + 0.5) / 1.0);  // Normalize the x coordinate to [0, 1]
+            texCoords.push_back((y + 0.5) / 1.0);  // Normalize the y coordinate to [0, 1]
+
+            // Calculate the stress magnitude
+            float stressMagnitude = sqrt(real(stress[0]) * real(stress[0]) + imag(stress[0]) * imag(stress[0]) + 
+                                         real(stress[1]) * real(stress[1]) + imag(stress[1]) * imag(stress[1]));
+
             int yIndex = (y + 0.5) * 10;
             int xIndex = (x + 0.5) * 10;
-            stressData[ y * width + x ] = stressMagnitude;
+            stressData[yIndex * width + xIndex] = stressMagnitude;
         }
-    } 
-    float maxStress = 0.0f;
-    for (const auto& stress : stressData) {
-        if (stress > maxStress) {
-            maxStress = stress;
-        }
-    }
-    std::cout << "Max stress: " << maxStress << std::endl;
-    
-    for (int i = 0; i < stressData.size(); ++i) {
-        stressData[i] /= maxStress;
-        // std::cout << "Stress at " << i << stressData[i] << std::endl;
     }
 }
+
 
 GLuint uploadStressTexture() {
     GLuint texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    int width = 1;
-    int height = 1;
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, width, height, 0, GL_RED, GL_FLOAT, stressData.data());
+    int texWidth = 10; 
+    int texHeight = 10;
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, texWidth, texHeight, 0, GL_RED, GL_FLOAT, stressData.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -89,11 +125,19 @@ GLuint uploadStressTexture() {
 
 
 int main(int argc, char** argv) {
-    // Initialize GLUT
+    
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE); // Core profile for OpenGL 3.3
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);  // Important for macOS
+
+
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowSize(800, 600);
     glutCreateWindow("OpenGL Shader Example");
+
+    const GLubyte* version = glGetString(GL_VERSION);
 
     // Load and compile shaders
     shaderProgram = createShaderProgram("vertex.glsl", "frag.glsl");
@@ -145,6 +189,10 @@ unsigned int createShaderProgram(const std::string& vertexPath, const std::strin
     unsigned int shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
+
+    glBindAttribLocation(shaderProgram, 0, "aPos");
+    glBindAttribLocation(shaderProgram, 1, "aTexCoord");
+
     glLinkProgram(shaderProgram);
 
     int success;
@@ -174,14 +222,13 @@ void cleanup() {
 void render() {
     initializeStressTexture();
     glClear(GL_COLOR_BUFFER_BIT);
-    // glUniform1i(glGetUniformLocation(shaderProgram, "stressTexture"), 0);
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, stressTexture);
+    glUniform1i(glGetUniformLocation(shaderProgram, "stressTexture"), 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, stressTexture);
 
     // Use the shader program
     glUseProgram(shaderProgram);
 
- // { {{Vec2D(-3, -2), Vec2D(3, -2), Vec2D(3, 2), Vec2D(-3, 2), Vec2D(-3, -2)}} };
     // Define a rectangle using OpenGL coordinates
     float vertices[] = {
         -.5f, -.5f, 0.0f,
@@ -192,8 +239,6 @@ void render() {
         -.5f, -.5f, 0.0f,
     };
 
-    // generate a vector mapping geometry coordinates, colors, and texture coordinates
-    float combined[sizeof(vertices) + sizeof(stressData) + sizeof(texCoords)];
     int numVertices = sizeof(vertices) / sizeof(vertices[0]) / 3;
 
     for (int i = 0; i < numVertices; ++i) {
@@ -210,6 +255,16 @@ void render() {
         vertices[i * 3 + 1] = static_cast<float>(imag(deformedPoint));
     }
 
+    // generate a vector mapping geometry coordinates, colors, and texture coordinates
+    float combined[sizeof(vertices) + sizeof(texCoords)];
+    for (int i = 0; i < sizeof(vertices) / sizeof(vertices[0]); i += 3) {
+        int index = i / 3;
+        combined[i * 5 / 3] = vertices[i];
+        combined[i * 5 / 3 + 1] = vertices[i + 1];
+        combined[i * 5 / 3 + 2] = vertices[i + 2];
+        combined[i * 5 / 3 + 3] = texCoords[index * 2];
+        combined[i * 5 / 3 + 4] = texCoords[index * 2 + 1];
+    }
     // Enable and bind the vertex data
     unsigned int VBO, VAO;
     glGenVertexArraysAPPLE(1, &VAO);
@@ -217,15 +272,18 @@ void render() {
 
     glBindVertexArrayAPPLE(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(combined), combined, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     glBindVertexArrayAPPLE(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glDrawArrays(GL_TRIANGLES, 0, numVertices);
 
     glBindVertexArrayAPPLE(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glutSwapBuffers();
 }
+
