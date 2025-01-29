@@ -74,11 +74,10 @@ vector<Polyline> newBoundaryDirichlet = {
 // returns distance from x to closest point on the given polylines P
 double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
-   // #pragma omp parallel for reduction(min:d)
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
          Vec2D y = closestPoint( x, P[i][j], P[i][j+1] ); // distance to segment
-         d = min( d, length(x-y) ); // update minimum distance
+         d = min( d, length(x-y) ); // update minimum distance         
       }
    }
    return d;
@@ -130,11 +129,11 @@ Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
 Vec2D solve( Vec2D x0, // evaluation point
               vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
               vector<Polyline> boundaryNeumann, // reflecting part of the boundary
-              function<Vec2D(Vec2D)> g ) { // Dirichlet boundary values
+              function<Vec2D(Vec2D)> g, bool print ) { // Dirichlet boundary values
    const double eps = 0.0001; // stopping tolerance
-   const double rMin = 0.0001; // minimum step size
+   const double rMin = 0.1; // minimum step size
    const int nWalks = 65536; // number of Monte Carlo samples
-   const int maxSteps = 65536; // maximum walk length
+   const int maxSteps = 10000000; // maximum walk length
    double sum_x = 0.0; // running sum of boundary contributions
    double sum_y = 0.0;
    int i = 0;
@@ -149,12 +148,23 @@ Vec2D solve( Vec2D x0, // evaluation point
 
       double r, dDirichlet, dSilhouette; // radii used to define star shaped region
       int steps = 0;
+      if (isnan(real(x) || isnan(imag(x)))) {
+         cerr << "x is nan" << endl;
+         continue;
+      }
       do { 
+         if (isnan(real(x)) || isnan(imag(x))) {
+            std::cout << "x is nan" << std::endl;
+            cerr << "x is nan" << endl;
+            break;
+         }
          // compute the radius of the largest star-shaped region
          dDirichlet = distancePolylines( x, boundaryDirichlet );
          dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
-         r = max( rMin, min( dDirichlet, dSilhouette ));
-
+         if (dDirichlet == infinity) {
+            std::cout << "dDirichlet is inf" << std::endl;
+         }
+         r = max(rMin, min(dDirichlet, dSilhouette));
          // intersect a ray with the star-shaped region boundary
          double theta = random( -M_PI, M_PI );
          if( onBoundary ) { // sample from a hemisphere around the normal
@@ -163,28 +173,32 @@ Vec2D solve( Vec2D x0, // evaluation point
          Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
          x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
 
+         if (isnan(real(x) || isnan(imag(x)))) {
+            std::cout << "becomes nan after intersectPolylines" << std::endl;
+         }
          steps++;
       }
       while(dDirichlet > eps && steps < maxSteps);
       //stop if we hit the Dirichlet boundary, or the walk is too long
 
       if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
-
-
+      std::cout << "steps: " << steps << std::endl;
       Vec2D eval_vec = g(x);
+      if (print) std::cout << "eval_vec: " << real(eval_vec) << ", " << imag(eval_vec) << std::endl;
       sum_x += real(eval_vec);
       sum_y += imag(eval_vec);
    }
-   std::cout << i << std::endl;
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
-// vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
-// for crack propagation shape 
-vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(100, 0), Vec2D(100, 100), Vec2D(0, 100), Vec2D(0, 0) }}};
+
+// vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(100, 0), Vec2D(100, 100), Vec2D(0, 100), Vec2D(0, 0) }}};
+vector<Polyline> boundaryDirichlet = {
+   {{ Vec2D(0, 0), Vec2D(600, 0.0), Vec2D(1000, 200), Vec2D(600, 100), Vec2D(0, 0) }}
+};
 vector<Polyline> boundaryNeumann = {
 
 };
@@ -294,7 +308,13 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    vector<Vec2D> neighbors_deformed = {};
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
-         solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
+         if ( i == 2 || i == 3 ) {
+            solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform, true);
+         }
+         else {
+            solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform, false);
+         }
+         // solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deformFunc, false);
          neighbors_deformed.push_back(solved_vec);
       }
       else {
@@ -312,23 +332,14 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
 
-
    strainFile << "X,Y,F11,F12,F21,F22\n";
    strainFile << x << "," << y << ",";
    strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
-
-   // double traceStrain = strain.trace();
-   // stressFile << "X,Y,Stress\n";
-   // stressFile << x << "," << y << ",";
-
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
 
-// def getTrace( double dudx, double dudy, double dvdx, double dvdy ) {
 
-// }
-
-Vec2D deform( Vec2D v ) {
+Vec2D deformFunc( Vec2D v ) {
    double x = real(v);
    double y = imag(v);
    return Vec2D(x + 0.4 * x * x, y );
@@ -337,7 +348,6 @@ Vec2D deform( Vec2D v ) {
 
 int main( int argc, char** argv ) {
    string shape = "rect100_seed_1_65536";
-
    srand( time(NULL) );
 
    int s = 16; // make it smaller to speed up
@@ -367,9 +377,9 @@ int main( int argc, char** argv ) {
          Vec2D bottom{ x, y - h/2 };
          Vec2D solved_vec = NAN;
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile);
-            solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deform);
-            displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
+            getDeformationGradientAndStress(x0, h, deformFunc, strainFile, neighbourFile);
+            // solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deformFunc,);
+            // displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
          }
       } 
    }
