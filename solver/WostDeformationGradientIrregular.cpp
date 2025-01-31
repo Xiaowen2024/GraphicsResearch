@@ -210,13 +210,12 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
       Vec2D AP = v - boundaryDirichlet[0][i];
       Vec2D PB = v - boundaryDirichlet[0][i + 1];
       Vec2D AB = boundaryDirichlet[0][i + 1] - boundaryDirichlet[0][i];
-
       Vec2D mapping1 = mappings[0][i]; 
       Vec2D mapping2 = mappings[0][i + 1];
-      // if (imag(mapping1) != 0 || imag(mapping2) != 0) {
-      //    cerr << "mapping1 y is not 0 or mapping 2 y is not 0" << endl;
-      //    std::cout << imag(mapping1) << " " << imag(mapping2) << std::endl;
-      // }
+      if (imag(mapping1) != 0 || imag(mapping2) != 0) {
+         cerr << "mapping1 y is not 0 or mapping 2 y is not 0" << endl;
+         std::cout << imag(mapping1) << " " << imag(mapping2) << std::endl;
+      }
       if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
          { if (print_in_bounds) cout << "in bounds 1" << std::endl; return mapping1; }
       if (abs(real(v) - real(boundaryDirichlet[0][i + 1])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i + 1])) < num_tol)
@@ -228,10 +227,10 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
          // interpolate mapping between mapping1 and mapping2
          Vec2D mapping3 = mapping1 + (mapping2 - mapping1) * length(AP) / length(AB);
          if (print_in_bounds) cout << "in the boundary 3" << real(v) << " " << imag(v) << std::endl;
-         // if (imag(mapping3) != 0) {
-         //    cerr << "mapping3 y is not 0" << endl;
-         //    std::cout << imag(mapping3) << std::endl;
-         // }
+         if (imag(mapping3) != 0) {
+            cerr << "mapping3 y is not 0" << endl;
+            std::cout << imag(mapping3) << std::endl;
+         }
          return mapping3;
       }
 
@@ -257,6 +256,7 @@ Vec2D displacement(Vec2D v) {
       Vec2D displacement_vec = deformed_vec - point;
       displacementVectors[0].push_back(displacement_vec);
    }
+   
 
    double num_tol = 1;
    Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, displacementVectors, num_tol);
@@ -264,13 +264,13 @@ Vec2D displacement(Vec2D v) {
 }
 
 // for the trouser shape 
-Vec2D deformCrackPropagation( Vec2D v ) {
-   vector<Polyline> mappings = boundaryDirichlet; 
-   // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
-   double num_tol = 1e-3;
-   Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol);
-   return mapping;
-}
+// Vec2D deformCrackPropagation( Vec2D v ) {
+//    vector<Polyline> mappings = boundaryDirichlet; 
+//    // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
+//    double num_tol = 1e-3;
+//    Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol);
+//    return mapping;
+// }
 
 // Returns true if the point x is contained in the region bounded by the Dirichlet
 // and Neumann curves.  We assume these curves form a collection of closed polygons,
@@ -336,7 +336,7 @@ Vec2D deformFunc( Vec2D v ) {
 int main( int argc, char** argv ) {
    bool printBoundary = true;
    string shape = "crackPropagation";
-   auto boundaryValueFunction = deformCrackPropagation;
+   auto boundaryValueFunction = displacement;
 
    srand( time(NULL) );
 
