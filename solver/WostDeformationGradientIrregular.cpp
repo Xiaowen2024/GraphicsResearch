@@ -4,7 +4,7 @@
 // Conditions" (2023), assuming no source term and zero-Neumann conditions.
 // NOTE: this code makes a few shortcuts for the sake of code brevity; may
 // be more suitable for tutorials than for production code/evaluation.
-// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStDeformationGradient.cpp -o wost-dg    
+// To compile: c++ -std=c++17 -O3 -pedantic -Wall WoStDeformationGradientIrregular.cpp -o wost-dg-irregular -w    
 
 #include <algorithm>
 #include <array>
@@ -162,6 +162,10 @@ Vec2D solve( Vec2D x0, // evaluation point
       if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
 
       Vec2D eval_vec = g(x);
+      // if (imag(eval_vec) != 0) {
+      //    cerr << "eval_vec y is not 0" << endl;
+      //    std::cout << imag(eval_vec) << std::endl;
+      // }
       sum_x += real(eval_vec);
       sum_y += imag(eval_vec);
    }
@@ -173,11 +177,11 @@ Vec2D solve( Vec2D x0, // evaluation point
 // and are given with consistent counter-clockwise orientation
 // vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
 // for crack propagation shape 
-vector<Polyline> boundaryDirichlet = {
-   {
-      {Vec2D(0, 0), Vec2D(0.4, 0), Vec2D(0.5, 0.3), Vec2D(0.6, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}
-   }
-};
+// vector<Polyline> boundaryDirichlet = {
+//    {
+//       {Vec2D(0, 0), Vec2D(0.4, 0), Vec2D(0.5, 0.3), Vec2D(0.6, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}
+//    }
+// };
 
 vector<Polyline> newBoundaryDirichlet = {
    {
@@ -209,8 +213,10 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
 
       Vec2D mapping1 = mappings[0][i]; 
       Vec2D mapping2 = mappings[0][i + 1];
-
-      // check if v is the same as any of the boundary points
+      // if (imag(mapping1) != 0 || imag(mapping2) != 0) {
+      //    cerr << "mapping1 y is not 0 or mapping 2 y is not 0" << endl;
+      //    std::cout << imag(mapping1) << " " << imag(mapping2) << std::endl;
+      // }
       if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
          { if (print_in_bounds) cout << "in bounds 1" << std::endl; return mapping1; }
       if (abs(real(v) - real(boundaryDirichlet[0][i + 1])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i + 1])) < num_tol)
@@ -222,8 +228,13 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
          // interpolate mapping between mapping1 and mapping2
          Vec2D mapping3 = mapping1 + (mapping2 - mapping1) * length(AP) / length(AB);
          if (print_in_bounds) cout << "in the boundary 3" << real(v) << " " << imag(v) << std::endl;
+         // if (imag(mapping3) != 0) {
+         //    cerr << "mapping3 y is not 0" << endl;
+         //    std::cout << imag(mapping3) << std::endl;
+         // }
          return mapping3;
       }
+
    }
 
    cerr << "v is not in the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
@@ -231,9 +242,10 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
 }
 
 Vec2D displacement(Vec2D v) { 
+   // vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
    vector<Polyline> displacedPoints = {
       {
-         {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
+         {Vec2D(-0.2, 0), Vec2D(1.2, 0), Vec2D(1.3, 1), Vec2D(-0.3, 1), Vec2D(-0.2, 0)}
       }
    }; 
 
@@ -253,8 +265,7 @@ Vec2D displacement(Vec2D v) {
 
 // for the trouser shape 
 Vec2D deformCrackPropagation( Vec2D v ) {
-   vector<Polyline> mappings = newBoundaryDirichlet; 
-   
+   vector<Polyline> mappings = boundaryDirichlet; 
    // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
    double num_tol = 1e-3;
    Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol);
@@ -294,8 +305,6 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    vector<Vec2D> neighbors_deformed = {};
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
-         // print neigbor points
-         // cout << real(neighbors[i]) << "," << imag(neighbors[i]) << "\n";
          solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
          neighbors_deformed.push_back(solved_vec);
       }
@@ -318,7 +327,7 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
 
-Vec2D deform( Vec2D v ) {
+Vec2D deformFunc( Vec2D v ) {
    double x = real(v);
    double y = imag(v);
    return Vec2D(x + 0.4 * x * x, y);
@@ -326,20 +335,16 @@ Vec2D deform( Vec2D v ) {
 
 int main( int argc, char** argv ) {
    bool printBoundary = true;
-   // string shape = "rect";
    string shape = "crackPropagation";
-   // auto boundaryValueFunction = deform; 
    auto boundaryValueFunction = deformCrackPropagation;
 
    srand( time(NULL) );
-   // ofstream out( "../output/" + shape + ".csv" );
 
-   int s = 16; // make it smaller to speed up
-   auto start = high_resolution_clock::now(); // Added for timing
-
-   // deformation_gradient_{shape}.csv
-   std::ofstream file("deformation_gradient_" + shape + "_0.01.csv");
-   std::ofstream interFile("deformation_gradient_" + shape + "_displacements.csv");
+   int s = 16;
+   auto start = high_resolution_clock::now();
+   std::ofstream file("../output/deformation_gradient_dis_" + shape + "_0.01.csv");
+   std::ofstream interFile("../output/deformation_gradient_dis_" + shape + "_neighbour_displacements.csv");
+   std::ofstream displacementFile("../output/deformation_gradient_dis_" + shape + "_displacements.csv");
 
    for( int j = 0; j < s; j++ )
    {
@@ -351,23 +356,10 @@ int main( int argc, char** argv ) {
          Vec2D solved_vec = numeric_limits<double>::quiet_NaN();
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
-            cout << real(x0) << "," << imag(x0) << std::endl;
             getDeformationGradient(x0, 0.01, boundaryValueFunction, file, interFile);
+            solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, displacement);
+            displacementFile << real(solved_vec) - real(x0) << "," << imag(solved_vec) - imag(x0) << "\n";
          }
       } 
-   }
-   auto stop = high_resolution_clock::now(); // Added for timing
-   auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
-   cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
-
-   // print boundary dirichlet 
-   if (!printBoundary) return 0;
-   ofstream outBoundaryD1( "../output/" + shape + "BoundaryDirichletBefore.csv" );
-   ofstream outBoundaryD( "../output/" + shape + "BoundaryDirichlet.csv" );
-   for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
-      Vec2D point = boundaryDirichlet[0][i];
-      Vec2D deformed_vec = boundaryValueFunction(point);
-      outBoundaryD1 << real(point) << "," << imag(point) << "," << 1.0 << std::endl;
-      outBoundaryD << real(deformed_vec) << "," << imag(deformed_vec) << "," << 1.0 << std::endl;
    }
 }
