@@ -161,14 +161,18 @@ Vec2D solve( Vec2D x0, // evaluation point
 
       if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
 
-      Vec2D eval_vec = x0;
+      Vec2D eval_vec = g(x);
+      if (isnan(real(eval_vec)) || isnan(imag(eval_vec))) {
+         continue;
+      }
       // if (imag(eval_vec) != 0) {
       //    cerr << "eval_vec y is not 0" << endl;
       //    std::cout << imag(eval_vec) << std::endl;
-      // }
+      // } 
       sum_x += real(eval_vec);
       sum_y += imag(eval_vec);
    } 
+   // std::cout << " sum_x/nWalks: " << sum_x/nWalks << ", sum_y/nWalks: " << sum_y/nWalks << std::endl;
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 
@@ -204,39 +208,23 @@ double signedAngle( Vec2D x, const vector<Polyline>& P )
    return Theta;
 }
 
-Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double num_tol=1e-3, bool print_in_bounds=false, bool print_out_bounds=false) { 
-   if (print_in_bounds) cout << real(v) << " " << imag(v) << " " << mappings[0].size() << std::endl;
-   for (int i = 0; i < mappings[0].size() - 1; i++) {
-      Vec2D AP = v - boundaryDirichlet[0][i];
-      Vec2D PB = v - boundaryDirichlet[0][i + 1];
-      Vec2D AB = boundaryDirichlet[0][i + 1] - boundaryDirichlet[0][i];
-      Vec2D mapping1 = mappings[0][i]; 
-      Vec2D mapping2 = mappings[0][i + 1];
-      // if (imag(mapping1) != 0 || imag(mapping2) != 0) {
-      //    cerr << "mapping1 y is not 0 or mapping 2 y is not 0" << endl;
-      //    std::cout << imag(mapping1) << " " << imag(mapping2) << std::endl;
-      // }
-      if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
-         { if (print_in_bounds) cout << "in bounds 1" << std::endl; return mapping1; }
-      if (abs(real(v) - real(boundaryDirichlet[0][i + 1])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i + 1])) < num_tol)
-         { if (print_in_bounds) cout << "in bounds 2" << std::endl; return mapping2; } 
+Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-3) { 
+   for (int i = 0; i < originalPoints[0].size() - 1; i++) {
+      Vec2D AP = v - originalPoints[0][i];
+      Vec2D PB = v - originalPoints[0][i + 1];
+      Vec2D AB = originalPoints[0][i + 1] - originalPoints[0][i];
+      Vec2D displaced1 = displacedPoints[0][i]; 
+      Vec2D displaced2 = displacedPoints[0][i + 1];
 
-      // check that v lies in the line segment between the boundary points
-      // if (distance(A, C) + distance(B, C) == distance(A, B))
       if (abs(length(AP) + length(PB) - length(AB)) < num_tol) {
-         // interpolate mapping between mapping1 and mapping2
-         Vec2D mapping3 = mapping1 + (mapping2 - mapping1) * length(AP) / length(AB);
-         if (print_in_bounds) cout << "in the boundary 3" << real(v) << " " << imag(v) << std::endl;
-         // if (imag(mapping3) != 0) {
-         //    cerr << "mapping3 y is not 0" << endl;
-         //    std::cout << imag(mapping3) << std::endl;
-         // }
-         return Vec2D(real(mapping3),imag(v));
+         Vec2D displaced = displaced1 + (displaced2 - displaced1) * length(AP) / length(AB);
+         return displaced;
       }
    }
 
-   cerr << "v is not in the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
-   return v;
+   cerr << "v is not on the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+   return nan;
 }
 
 Vec2D displacement(Vec2D v) { 
@@ -257,9 +245,17 @@ Vec2D displacement(Vec2D v) {
    // }
    
 
-   double num_tol = 1;
-   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, displacedPoints, num_tol);
-   return v;
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+
+   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, boundaryDirichlet, displacedPoints);
+   if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
+      std::cout << "found NAN" << std::endl;
+      cerr << "Interpolated displacement is NaN for point: " << real(v) << ", " << imag(v) << endl;
+      return nan;
+   }
+   // std::cout << " original point: " << real(v) << ", " << imag(v) << std::endl;
+   // std::cout << " interpolated displacement: " << real(interpolatedDisplacement) << ", " << imag(interpolatedDisplacement) << std::endl;
+   return interpolatedDisplacement;
 }
 
 // for the trouser shape 
@@ -362,7 +358,7 @@ int main( int argc, char** argv ) {
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
             getDeformationGradient(x0, 0.01, displacement, file, interFile);
-            // alll solved values have y = 0 
+            // all solved values have y = 0 
             solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, displacement);
             // std::cout << "solved_vec: " << real(solved_vec) << ", " << imag(solved_vec) << std::endl;
             displacementFile << real(solved_vec) - real(x0) << "," << imag(solved_vec) - imag(x0) << "\n";
