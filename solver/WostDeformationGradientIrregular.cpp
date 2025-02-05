@@ -131,7 +131,7 @@ Vec2D solve( Vec2D x0, // evaluation point
    const int nWalks = 65536; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
    double sum_x = 0.0; // running sum of boundary contributions
-   double sum_y = 0.0;
+   double sum_y = 0.0; 
    // #pragma omp parallel for reduction(+:sum)
    for( int i = 0; i < nWalks; i++ ) {
       Vec2D x = x0; // start walk at the evaluation point
@@ -161,14 +161,14 @@ Vec2D solve( Vec2D x0, // evaluation point
 
       if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
 
-      Vec2D eval_vec = g(x);
+      Vec2D eval_vec = x0;
       // if (imag(eval_vec) != 0) {
       //    cerr << "eval_vec y is not 0" << endl;
       //    std::cout << imag(eval_vec) << std::endl;
       // }
       sum_x += real(eval_vec);
       sum_y += imag(eval_vec);
-   }
+   } 
    return Vec2D(sum_x/nWalks, sum_y/nWalks);
 }
 
@@ -212,10 +212,10 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
       Vec2D AB = boundaryDirichlet[0][i + 1] - boundaryDirichlet[0][i];
       Vec2D mapping1 = mappings[0][i]; 
       Vec2D mapping2 = mappings[0][i + 1];
-      if (imag(mapping1) != 0 || imag(mapping2) != 0) {
-         cerr << "mapping1 y is not 0 or mapping 2 y is not 0" << endl;
-         std::cout << imag(mapping1) << " " << imag(mapping2) << std::endl;
-      }
+      // if (imag(mapping1) != 0 || imag(mapping2) != 0) {
+      //    cerr << "mapping1 y is not 0 or mapping 2 y is not 0" << endl;
+      //    std::cout << imag(mapping1) << " " << imag(mapping2) << std::endl;
+      // }
       if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
          { if (print_in_bounds) cout << "in bounds 1" << std::endl; return mapping1; }
       if (abs(real(v) - real(boundaryDirichlet[0][i + 1])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i + 1])) < num_tol)
@@ -227,17 +227,16 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double
          // interpolate mapping between mapping1 and mapping2
          Vec2D mapping3 = mapping1 + (mapping2 - mapping1) * length(AP) / length(AB);
          if (print_in_bounds) cout << "in the boundary 3" << real(v) << " " << imag(v) << std::endl;
-         if (imag(mapping3) != 0) {
-            cerr << "mapping3 y is not 0" << endl;
-            std::cout << imag(mapping3) << std::endl;
-         }
-         return mapping3;
+         // if (imag(mapping3) != 0) {
+         //    cerr << "mapping3 y is not 0" << endl;
+         //    std::cout << imag(mapping3) << std::endl;
+         // }
+         return Vec2D(real(mapping3),imag(v));
       }
-
    }
 
    cerr << "v is not in the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
-   return Vec2D(0,0);
+   return v;
 }
 
 Vec2D displacement(Vec2D v) { 
@@ -249,18 +248,18 @@ Vec2D displacement(Vec2D v) {
    }; 
 
    // create vector polyline of displacement vectors from boundary points
-   vector<Polyline> displacementVectors = {{{}}};
-   for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
-      Vec2D point = boundaryDirichlet[0][i];
-      Vec2D deformed_vec = displacedPoints[0][i];
-      Vec2D displacement_vec = deformed_vec - point;
-      displacementVectors[0].push_back(displacement_vec);
-   }
+   // vector<Polyline> displacementVectors = {{{}}};
+   // for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
+   //    Vec2D point = boundaryDirichlet[0][i];
+   //    Vec2D deformed_vec = displacedPoints[0][i];
+   //    Vec2D displacement_vec = deformed_vec - point;
+   //    displacementVectors[0].push_back(displacement_vec);
+   // }
    
 
    double num_tol = 1;
-   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, displacementVectors, num_tol);
-   return interpolatedDisplacement;
+   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, displacedPoints, num_tol);
+   return v;
 }
 
 // for the trouser shape 
@@ -312,6 +311,11 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
          return vector<Vec2D>{nan, nan};
       }
    }
+   // std::cout << "neighbors_deformed 1: " << real(neighbors_deformed[0]) << ", " << imag(neighbors_deformed[0]) << std::endl;
+   // std::cout << "neighbors_deformed 2: " << real(neighbors_deformed[1]) << ", " << imag(neighbors_deformed[1]) << std::endl;
+   // std::cout << "neighbors_deformed 3: " << real(neighbors_deformed[2]) << ", " << imag(neighbors_deformed[2]) << std::endl;
+   // std::cout << "neighbors_deformed 4: " << real(neighbors_deformed[3]) << ", " << imag(neighbors_deformed[3]) << std::endl;
+
 
    interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
    interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
@@ -324,6 +328,7 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    file << "X,Y,F11,F12,F21,F22\n";
    file << x << "," << y << ",";
    file << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
 
@@ -356,8 +361,10 @@ int main( int argc, char** argv ) {
          Vec2D solved_vec = numeric_limits<double>::quiet_NaN();
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradient(x0, 0.01, boundaryValueFunction, file, interFile);
+            getDeformationGradient(x0, 0.01, displacement, file, interFile);
+            // alll solved values have y = 0 
             solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, displacement);
+            // std::cout << "solved_vec: " << real(solved_vec) << ", " << imag(solved_vec) << std::endl;
             displacementFile << real(solved_vec) - real(x0) << "," << imag(solved_vec) - imag(x0) << "\n";
          }
       } 
