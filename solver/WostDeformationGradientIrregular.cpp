@@ -126,7 +126,7 @@ Vec2D solve( Vec2D x0, // evaluation point
               vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
               vector<Polyline> boundaryNeumann, // reflecting part of the boundary
               function<Vec2D(Vec2D)> g ) { // Dirichlet boundary values
-   const double eps = 0.0001; // stopping tolerance
+   const double eps = 0.000001; // stopping tolerance
    const double rMin = 0.0001; // minimum step size
    const int nWalks = 65536; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
@@ -208,7 +208,7 @@ double signedAngle( Vec2D x, const vector<Polyline>& P )
    return Theta;
 }
 
-Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-3) { 
+Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
    for (int i = 0; i < originalPoints[0].size() - 1; i++) {
       Vec2D AP = v - originalPoints[0][i];
       Vec2D PB = v - originalPoints[0][i + 1];
@@ -229,9 +229,14 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
 
 Vec2D displacement(Vec2D v) { 
    // vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
-   vector<Polyline> displacedPoints = {
+   // vector<Polyline> displacedPoints = {
+   //    {
+   //       {Vec2D(0, -0.1), Vec2D(1, -0.2), Vec2D(1, 1.2), Vec2D(0, 1.1), Vec2D(0, -0.1)}
+   //    }
+   // }; 
+    vector<Polyline> displacedPoints = {
       {
-         {Vec2D(-0.2, 0), Vec2D(1.2, 0), Vec2D(1.3, 1), Vec2D(-0.3, 1), Vec2D(-0.2, 0)}
+         {Vec2D(-0.1, 0), Vec2D(1.2, 0), Vec2D(1.1, 1), Vec2D(-0.2, 1), Vec2D(-0.1, 0)}
       }
    }; 
 
@@ -249,8 +254,6 @@ Vec2D displacement(Vec2D v) {
 
    Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, boundaryDirichlet, displacedPoints);
    if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
-      std::cout << "found NAN" << std::endl;
-      cerr << "Interpolated displacement is NaN for point: " << real(v) << ", " << imag(v) << endl;
       return nan;
    }
    // std::cout << " original point: " << real(v) << ", " << imag(v) << std::endl;
@@ -343,9 +346,9 @@ int main( int argc, char** argv ) {
 
    int s = 16;
    auto start = high_resolution_clock::now();
-   std::ofstream file("../output/deformation_gradient_dis_" + shape + "_0.01.csv");
-   std::ofstream interFile("../output/deformation_gradient_dis_" + shape + "_neighbour_displacements.csv");
-   std::ofstream displacementFile("../output/deformation_gradient_dis_" + shape + "_displacements.csv");
+   std::ofstream file("../output/deformation_gradient_x_" + shape + "_0.01.csv");
+   std::ofstream interFile("../output/deformation_gradient_x_" + shape + "_neighbour_displacements.csv");
+   std::ofstream displacementFile("../output/deformation_gradient_x_" + shape + "_displacements.csv");
 
    for( int j = 0; j < s; j++ )
    {
