@@ -159,7 +159,7 @@ Vec2D solve( Vec2D x0, // evaluation point
       while(dDirichlet > eps && steps < maxSteps);
       //stop if we hit the Dirichlet boundary, or the walk is too long
 
-      if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
+      // if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
 
       Vec2D eval_vec = g(x);
       if (isnan(real(eval_vec)) || isnan(imag(eval_vec))) {
@@ -222,7 +222,7 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
       }
    }
 
-   cerr << "v is not on the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
+   // cerr << "v is not on the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    return nan;
 }
@@ -301,6 +301,9 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
    Vec2D bottom{ x, y - h/2 };
    vector<Vec2D> neighbors = {left, right, top, bottom};
    vector<Vec2D> neighbors_deformed = {};
+   const int num_samples = 5;
+   vector<double> dudx_samples, dudy_samples, dvdx_samples, dvdy_samples;
+
    for ( int i = 0; i < 4; i++ ) {
       if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
          solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
@@ -310,20 +313,56 @@ vector<Vec2D> getDeformationGradient( Vec2D point, double h, function<Vec2D(Vec2
          return vector<Vec2D>{nan, nan};
       }
    }
+
+   for (int k = 0; k < num_samples; k++) {
+      double perturb = h * (k - (num_samples - 1) / 2.0) / (num_samples - 1);
+      Vec2D left_perturbed{ x - h/2 + perturb, y };
+      Vec2D right_perturbed{ x + h/2 + perturb, y };
+      Vec2D top_perturbed{ x, y + h/2 + perturb };
+      Vec2D bottom_perturbed{ x, y - h/2 + perturb };
+
+      vector<Vec2D> perturbed_neighbors = {left_perturbed, right_perturbed, top_perturbed, bottom_perturbed};
+      vector<Vec2D> perturbed_neighbors_deformed = {};
+
+      for ( int i = 0; i < 4; i++ ) {
+         if( insideDomain(perturbed_neighbors[i], boundaryDirichlet, boundaryNeumann) ){
+            solved_vec = solve(perturbed_neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
+            perturbed_neighbors_deformed.push_back(solved_vec);
+         }
+         else {
+            return vector<Vec2D>{nan, nan};
+         }
+      }
+
+      dudx_samples.push_back((real(perturbed_neighbors_deformed[1]) - real(perturbed_neighbors_deformed[0])) / h);
+      dudy_samples.push_back((real(perturbed_neighbors_deformed[2]) - real(perturbed_neighbors_deformed[3])) / h);
+      dvdx_samples.push_back((imag(perturbed_neighbors_deformed[1]) - imag(perturbed_neighbors_deformed[0])) / h);
+      dvdy_samples.push_back((imag(perturbed_neighbors_deformed[2]) - imag(perturbed_neighbors_deformed[3])) / h);
+      interFile << "new leftX, new leftY, new rightX, new rightY, new topX, new topY, new bottomX, new bottomY\n";
+      interFile << real(perturbed_neighbors_deformed[0]) << "," << imag(perturbed_neighbors_deformed[0]) << ",";
+      interFile << real(perturbed_neighbors_deformed[1]) << "," << imag(perturbed_neighbors_deformed[1]) << ",";
+      interFile << real(perturbed_neighbors_deformed[2]) << "," << imag(perturbed_neighbors_deformed[2]) << ",";
+      interFile << real(perturbed_neighbors_deformed[3]) << "," << imag(perturbed_neighbors_deformed[3]) << "\n";
+   }
+
+   double dudx = accumulate(dudx_samples.begin(), dudx_samples.end(), 0.0) / num_samples;
+   double dudy = accumulate(dudy_samples.begin(), dudy_samples.end(), 0.0) / num_samples;
+   double dvdx = accumulate(dvdx_samples.begin(), dvdx_samples.end(), 0.0) / num_samples;
+   double dvdy = accumulate(dvdy_samples.begin(), dvdy_samples.end(), 0.0) / num_samples;
    // std::cout << "neighbors_deformed 1: " << real(neighbors_deformed[0]) << ", " << imag(neighbors_deformed[0]) << std::endl;
    // std::cout << "neighbors_deformed 2: " << real(neighbors_deformed[1]) << ", " << imag(neighbors_deformed[1]) << std::endl;
    // std::cout << "neighbors_deformed 3: " << real(neighbors_deformed[2]) << ", " << imag(neighbors_deformed[2]) << std::endl;
    // std::cout << "neighbors_deformed 4: " << real(neighbors_deformed[3]) << ", " << imag(neighbors_deformed[3]) << std::endl;
 
 
-   interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
-   interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
-   interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
-   interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
-   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
-   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
-   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
-   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
+   // interFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
+   // interFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
+   // interFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
+   // interFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
+   // double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
+   // double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
+   // double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
+   // double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
    file << "X,Y,F11,F12,F21,F22\n";
    file << x << "," << y << ",";
    file << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
@@ -346,9 +385,9 @@ int main( int argc, char** argv ) {
 
    int s = 16;
    auto start = high_resolution_clock::now();
-   std::ofstream file("../output/deformation_gradient_x_" + shape + "_0.01.csv");
-   std::ofstream interFile("../output/deformation_gradient_x_" + shape + "_neighbour_displacements.csv");
-   std::ofstream displacementFile("../output/deformation_gradient_x_" + shape + "_displacements.csv");
+   std::ofstream file("../output/deformation_gradient_x_" + shape + "_0.001_2.csv");
+   std::ofstream interFile("../output/deformation_gradient_x_" + shape + "_neighbour_displacements_0.001_2.csv");
+   std::ofstream displacementFile("../output/deformation_gradient_x_" + shape + "_displacements_0.001_2.csv");
 
    for( int j = 0; j < s; j++ )
    {
@@ -360,7 +399,7 @@ int main( int argc, char** argv ) {
          Vec2D solved_vec = numeric_limits<double>::quiet_NaN();
    
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) ){
-            getDeformationGradient(x0, 0.01, displacement, file, interFile);
+            getDeformationGradient(x0, 0.001, displacement, file, interFile);
             // all solved values have y = 0 
             solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, displacement);
             // std::cout << "solved_vec: " << real(solved_vec) << ", " << imag(solved_vec) << std::endl;
