@@ -57,33 +57,93 @@ bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
    return cross(b-a,x-a) * cross(c-b,x-b) < 0;
 }
 
-// returns the time t at which the ray x+tv intersects segment ab,
-// or infinity if there is no intersection
-double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
-   Vec2D u = b - a;
-   Vec2D w = x - a;
-   double d = cross(v,u);
-   double s = cross(v,w) / d;
-   double t = cross(u,w) / d;
-   if (t > 0. && 0. <= s && s <= 1.) {
-      return t;
-   }
-   return infinity;
-}
+// // returns the time t at which the ray x+tv intersects segment ab,
+// // or infinity if there is no intersection
+// double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
+//    Vec2D u = b - a;
+//    Vec2D w = x - a;
+//    double d = cross(v,u);
+//    double s = cross(v,w) / d;
+//    double t = cross(u,w) / d;
+//    if (t > 0. && 0. <= s && s <= 1.) {
+//       return t;
+//    }
+//    return infinity;
+// }
 
 using Polyline = vector<Vec2D>;
 
+double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
+    Vec2D u = b - a;
+    Vec2D w = x - a;
+    double d = cross(v, u);
+
+    if (fabs(d) < 1e-12) {
+        return infinity;  
+    }
+
+    double s = cross(v, w) / d;
+    double t = cross(u, w) / d;
+
+    // Check if intersection is within the segment bounds
+    if (t > 0.0 && s >= 0.0 && s <= 1.0) {
+        return t;
+    }
+    return infinity;  // No valid intersection
+}
+
+
+Vec2D intersectPolylines(Vec2D x, Vec2D v, double r,
+                         const vector<Polyline>& P,
+                         Vec2D& n, bool& onBoundary) {
+    double tMin = r;  // smallest hit time so far
+    n = Vec2D{ 0.0, 0.0 };  // first hit normal
+    onBoundary = false;  // will be true only if the first hit is on a segment
+    
+    for (int i = 0; i < P.size(); i++) {  // iterate over polylines
+        for (int j = 0; j < P[i].size() - 1; j++) {  // iterate over segments
+            const double c = 1e-5;  // ray offset (to avoid self-intersection)
+            double t = rayIntersection(x + c * v, v, P[i][j], P[i][j+1]);
+            
+            // Check if t is valid and closer than the current minimum
+            if (t < tMin && t > 0) {
+                tMin = t;
+                Vec2D edge = P[i][j + 1] - P[i][j];
+                
+                // Calculate the normal only if the edge length is non-zero
+                if (length(edge) > 1e-6) {
+                    n = rotate90(edge);
+                    n /= length(n);  // make normal unit length
+                }
+                
+                onBoundary = true;
+            }
+        }
+    }
+    
+    // Return the intersection point
+    return x + tMin * v;
+}
+
+
+
 // returns distance from x to closest point on the given polylines P
-double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
+pair<double, Vec2D> distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
    // #pragma omp parallel for reduction(min:d)
+   Vec2D y;
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
-         Vec2D y = closestPoint( x, P[i][j], P[i][j+1] ); // distance to segment
-         d = min( d, length(x-y) ); // update minimum distance
+         // distance to segment
+         Vec2D temp = closestPoint( x, P[i][j], P[i][j+1] );
+         if (d > length(x-temp)) {
+            y = closestPoint( x, P[i][j], P[i][j+1] );
+            d = min( d, length(x-y) ); // update minimum distance
+         }
+        
       }
    }
-   return d;
+   return make_pair(d, y);
 }
 
 // returns distance from x to closest silhouette point on the given polylines P
@@ -100,30 +160,30 @@ double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    return d;
 }
 
-// finds the first intersection y of the ray x+tv with the given polylines P,
-// restricted to a ball of radius r around x.  The flag onBoundary indicates
-// whether the first hit is on a boundary segment (rather than the sphere), and
-// if so sets n to the normal at the hit point.
-Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
-                         const vector<Polyline>& P,
-                         Vec2D& n, bool& onBoundary ) {
-   double tMin = r; // smallest hit time so far
-   n = Vec2D{ 0.0, 0.0 }; // first hit normal
-   onBoundary = false; // will be true only if the first hit is on a segment
-   for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
-      for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
-         const double c = 1e-5; // ray offset (to avoid self-intersection)
-         double t = rayIntersection( x + c*v, v, P[i][j], P[i][j+1] );
-         if( t < tMin ) { // closest hit so far
-            tMin = t;
-            n = rotate90( P[i][j+1] - P[i][j] ); // get normal
-            n /= length(n); // make normal unit length
-            onBoundary = true;
-         }
-      }
-   }
-   return x + tMin*v; // first hit location
-}
+// // finds the first intersection y of the ray x+tv with the given polylines P,
+// // restricted to a ball of radius r around x.  The flag onBoundary indicates
+// // whether the first hit is on a boundary segment (rather than the sphere), and
+// // if so sets n to the normal at the hit point.
+// Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
+//                          const vector<Polyline>& P,
+//                          Vec2D& n, bool& onBoundary ) {
+//    double tMin = r; // smallest hit time so far
+//    n = Vec2D{ 0.0, 0.0 }; // first hit normal
+//    onBoundary = false; // will be true only if the first hit is on a segment
+//    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
+//       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
+//          const double c = 1e-5; // ray offset (to avoid self-intersection)
+//          double t = rayIntersection( x + c*v, v, P[i][j], P[i][j+1] );
+//          if( t < tMin ) { // closest hit so far
+//             tMin = t;
+//             n = rotate90( P[i][j+1] - P[i][j] ); // get normal
+//             n /= length(n); // make normal unit length
+//             onBoundary = true;
+//          }
+//       }
+//    }
+//    return x + tMin*v; // first hit location
+// }
 
 // solves a Laplace equation Delta u = 0 at x0, where the Dirichlet and Neumann
 // boundaries are each given by a collection of polylines, the Neumann
@@ -135,13 +195,15 @@ Vec2D solve( Vec2D x0, // evaluation point
               function<Vec2D(Vec2D)> g ) { // Dirichlet boundary values
    const double eps = 0.0001; // stopping tolerance
    const double rMin = 0.0001; // minimum step size
-   const int nWalks = 65536; // number of Monte Carlo samples
+   const int nWalks = 100000; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
    double sum_x = 0.0; // running sum of boundary contributions
    double sum_y = 0.0;
    int i = 0;
    unsigned seed = 1;
    srand(seed);
+
+   int walker = 0;
   
    // #pragma omp parallel for reduction(+:sum)
    for( i = 0; i < nWalks; i++ ) {
@@ -151,11 +213,23 @@ Vec2D solve( Vec2D x0, // evaluation point
 
       double r, dDirichlet, dSilhouette; // radii used to define star shaped region
       int steps = 0;
+      Vec2D closestPoint;
       do { 
          // compute the radius of the largest star-shaped region
-         dDirichlet = distancePolylines( x, boundaryDirichlet );
+         auto p = distancePolylines( x, boundaryDirichlet );
+         dDirichlet = p.first;
+         closestPoint = p.second;
+
+
+         // if (dDirichlet < eps) {
+         //    std::cout << "dDirichlet min: " << dDirichlet << " length: " <<  length(x - closestPoint) << " eps: " <<  eps << std::endl;
+         // }
+ 
          dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
          r = max( rMin, min( dDirichlet, dSilhouette ));
+         // r = 0.001;
+
+         // std::cout << "r: " << r << std::endl;
 
          // intersect a ray with the star-shaped region boundary
          double theta = random( -M_PI, M_PI );
@@ -167,33 +241,40 @@ Vec2D solve( Vec2D x0, // evaluation point
 
          steps++;
       }
-      while(dDirichlet > eps && steps < maxSteps);
+      while(dDirichlet > eps);
+
+     
+      // x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
+
+      // std::cout << "dDirichlet: " << length(x - closestPoint) << std::endl;
+ 
       //stop if we hit the Dirichlet boundary, or the walk is too long
 
-      if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
-
+      // if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
 
       Vec2D eval_vec = g(x);
+      // std::cout << "x0: " << real(x0) << ", " << imag(x0) << std::endl;
+      // std::cout << "closestPoint: " << real(closestPoint) << ", " << imag(closestPoint) << std::endl;
+      // std::cout << "x: " << real(x) << ", " << imag(x) << std::endl;
+      // assert (!isnan(real(eval_vec)) && !isnan(imag(eval_vec)));
+      // assert (real(eval_vec) == real(closestPoint) && imag(eval_vec) == imag(closestPoint));
+      
+      // get rid of nan
+      if (isnan(real(eval_vec)) || isnan(imag(eval_vec))) {
+         continue;
+      }
+      walker += 1;
       sum_x += real(eval_vec);
       sum_y += imag(eval_vec);
-   }
+   } 
    // std::cout << i << std::endl;
-   return Vec2D(sum_x/nWalks, sum_y/nWalks);
+   return Vec2D(sum_x/walker, sum_y/walker);
 }
 
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = {
-   {
-      {Vec2D(0, 0), Vec2D(0.4, 0), Vec2D(0.5, 0.3), Vec2D(0.6, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}
-   }
-};
-vector<Polyline> newBoundaryDirichlet = {
-   {
-      {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
-   }
-};
+vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(0.3, 0), Vec2D(0.6, 0),  Vec2D(1, 0), Vec2D(1, 0.3), Vec2D(1, 0.6), Vec2D(1, 1), Vec2D(0.6, 1), Vec2D(0.3, 1), Vec2D(0, 1), Vec2D(0, 0.6), Vec2D(0, 3), Vec2D(0, 0) }}};
 
 vector<Polyline> boundaryNeumann = {
 
@@ -210,65 +291,63 @@ double signedAngle( Vec2D x, const vector<Polyline>& P )
    return Theta;
 }
 
-Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> mappings, double num_tol=1e-3, bool print_in_bounds=false, bool print_out_bounds=false) { 
-   if (print_in_bounds) cout << real(v) << " " << imag(v) << " " << mappings[0].size() << std::endl;
-   for (int i = 0; i < mappings[0].size() - 1; i++) {
-      Vec2D AP = v - boundaryDirichlet[0][i];
-      Vec2D PB = v - boundaryDirichlet[0][i + 1];
-      Vec2D AB = boundaryDirichlet[0][i + 1] - boundaryDirichlet[0][i];
+Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
+   for (int i = 0; i < originalPoints[0].size() - 1; i++) {
+      Vec2D AP = v - originalPoints[0][i];
+      Vec2D PB = v - originalPoints[0][i + 1];
+      Vec2D AB = originalPoints[0][i + 1] - originalPoints[0][i];
+      Vec2D displaced1 = displacedPoints[0][i]; 
+      Vec2D displaced2 = displacedPoints[0][i + 1];
 
-      Vec2D mapping1 = mappings[0][i]; 
-      Vec2D mapping2 = mappings[0][i + 1];
-
-      // check if v is the same as any of the boundary points
-      if (abs(real(v) - real(boundaryDirichlet[0][i])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i])) < num_tol)
-         { if (print_in_bounds) cout << "in bounds 1" << std::endl; return mapping1; }
-      if (abs(real(v) - real(boundaryDirichlet[0][i + 1])) < num_tol && abs(imag(v) - imag(boundaryDirichlet[0][i + 1])) < num_tol)
-         { if (print_in_bounds) cout << "in bounds 2" << std::endl; return mapping2; } 
-
-      // check that v lies in the line segment between the boundary points
-      // if (distance(A, C) + distance(B, C) == distance(A, B))
       if (abs(length(AP) + length(PB) - length(AB)) < num_tol) {
-         // interpolate mapping between mapping1 and mapping2
-         Vec2D mapping3 = mapping1 + (mapping2 - mapping1) * length(AP) / length(AB);
-         if (print_in_bounds) cout << "in the boundary 3" << real(v) << " " << imag(v) << std::endl;
-         return mapping3;
+         Vec2D displaced = displaced1 + (displaced2 - displaced1) * length(AP) / length(AB);
+         return displaced;
       }
    }
 
-   cerr << "v is not in the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
-   return Vec2D(0,0);
+   // cerr << "v is not on the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+   return nan;
 }
 
 Vec2D displacement(Vec2D v) { 
-   vector<Polyline> displacedPoints = {
-      {
-         {Vec2D(-0.2, 0), Vec2D(0.3, 0), Vec2D(0.5, 0.5), Vec2D(0.7, 0), Vec2D(1.2, 0), Vec2D(1.0, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}
-      }
-   }; 
+   // vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
+   // vector<Polyline> displacedPoints = {
+   //    {
+   //       {Vec2D(0, -0.1), Vec2D(1, -0.2), Vec2D(1, 1.2), Vec2D(0, 1.1), Vec2D(0, -0.1)}
+   //    }
+   // }; 
+   //  vector<Polyline> displacedPoints = {
+   //    {
+   //       {Vec2D(-0.1, 0), Vec2D(1.2, 0), Vec2D(1.1, 1), Vec2D(-0.2, 1), Vec2D(-0.1, 0)}
+   //    }
+   // }; 
+   
+   vector<Polyline> displacedPoints = {   {{ Vec2D(0, 0), Vec2D(1.2, -0.2), Vec2D(1.2, 1.2), Vec2D(0, 1), Vec2D(0, 0) }}};
 
    // create vector polyline of displacement vectors from boundary points
-   vector<Polyline> displacementVectors = {{{}}};
-   for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
-      Vec2D point = boundaryDirichlet[0][i];
-      Vec2D deformed_vec = displacedPoints[0][i];
-      Vec2D displacement_vec = deformed_vec - point;
-      displacementVectors[0].push_back(displacement_vec);
-   }
+   // vector<Polyline> displacementVectors = {{{}}};
+   // for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
+   //    Vec2D point = boundaryDirichlet[0][i];
+   //    Vec2D deformed_vec = displacedPoints[0][i];
+   //    Vec2D displacement_vec = deformed_vec - point;
+   //    displacementVectors[0].push_back(displacement_vec);
+   // }
+   
 
-   double num_tol = 1;
-   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, displacementVectors, num_tol);
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+
+   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, boundaryDirichlet, displacedPoints);
+   if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
+      return nan;
+   }
+   // std::cout << " original point: " << real(v) << ", " << imag(v) << std::endl;
+   // std::cout << " interpolated displacement: " << real(interpolatedDisplacement) << ", " << imag(interpolatedDisplacement) << std::endl;
    return interpolatedDisplacement;
 }
 
-// for the trouser shape 
-Vec2D deformTrousers( Vec2D v ) {
-   vector<Polyline> mappings = newBoundaryDirichlet; 
-   
-   // check if v is between any 2 consecutive points in the boundary and get the corresponding interpolation between the 2 points in the mapping
-   double num_tol = 1e-3;
-   Vec2D mapping = interpolateVec2D_BoundaryPoints(v, mappings, num_tol);
-   return mapping;
+Vec2D deformFunc( Vec2D v ) {
+  return v;
 }
 
 // Returns true if the point x is contained in the region bounded by the Dirichlet
@@ -314,12 +393,19 @@ void storeEigens(double dudx, double dudy, double dvdx, double dvdy,
                   std::ofstream& eigenvalueFile, std::ofstream& eigenvalueFile2, std::ofstream& eigenvalueFile3) {
    // Create matrix
    Eigen::MatrixXf matrix(2, 2);
+  
    matrix << dudx, dudy,
             dvdx, dvdy;
 
+   // Calculate the transpose of the matrix
+   Eigen::MatrixXf matrixTranspose = matrix.transpose();
+
+   // Multiply the transpose of the matrix by the matrix
+   Eigen::MatrixXf strain = 0.5 * (matrixTranspose * matrix - Eigen::MatrixXf::Identity(2, 2));
+
    // Compute eigenvalues and eigenvectors
    Eigen::EigenSolver<Eigen::MatrixXf> eigensolver;
-   eigensolver.compute(matrix);
+   eigensolver.compute(strain);
 
    // Get real parts of eigenvalues and eigenvectors
    Eigen::VectorXf eigenvalues = eigensolver.eigenvalues().real();
@@ -328,17 +414,15 @@ void storeEigens(double dudx, double dudy, double dvdx, double dvdy,
    // Find index of maximum eigenvalue
    Eigen::Index maxIndex;
 
-   // Store the principal eigenvalue squared
    eigenvalues.maxCoeff(&maxIndex);
    eigenvalueFile << eigenvalues(maxIndex) << "\n";
 
-   // test: Store the principal eigenvalue squared
    // Find index of maximum magnitude eigenvalue
    eigenvalues.array().abs().maxCoeff(&maxIndex);
    eigenvalueFile2 << eigenvalues(maxIndex) << "\n";
 
    // test: storing norm instead
-   eigenvalueFile3 << matrix.norm() << "\n";
+   eigenvalueFile3 << strain.norm() << "\n";
 }
 
 vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, 
@@ -353,7 +437,8 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
       std::cerr << "Unable to open file: " << std::endl;
       return vector<Vec2D>{solved_vec, solved_vec};
    }
-   neighbourFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
+  
+  
    Vec2D left{ x - h/2, y };
    Vec2D right{ x + h/2, y };
    Vec2D top{ x, y + h/2 };
@@ -369,7 +454,26 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
          return vector<Vec2D>{nan, nan};
       }
    }
+   neighbourFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
+   neighbourFile << real(left) << "," << imag(left) << ",";
+   neighbourFile << real(right) << "," << imag(right) << ",";
+   neighbourFile << real(top) << "," << imag(top) << ",";
+   neighbourFile << real(bottom) << "," << imag(bottom) << "\n";
 
+   
+
+   // std::cout << "original x, y: " << x << ", " << y << std::endl;
+
+   // std::cout << "original left: " << real(neighbors[0]) << ", " << imag(neighbors[0]) << std::endl;
+   // std::cout << "deformed left: " << real(neighbors_deformed[0]) << ", " << imag(neighbors_deformed[0]) << std::endl;
+   // std::cout << "original right: " << real(neighbors[1]) << ", " << imag(neighbors[1]) << std::endl;
+   // std::cout << "deformed right: " << real(neighbors_deformed[1]) << ", " << imag(neighbors_deformed[1]) << std::endl;
+   // std::cout << "original top: " << real(neighbors[2]) << ", " << imag(neighbors[2]) << std::endl;
+   // std::cout << "deformed top: " << real(neighbors_deformed[2]) << ", " << imag(neighbors_deformed[2]) << std::endl;
+   // std::cout << "original bottom: " << real(neighbors[3]) << ", " << imag(neighbors[3]) << std::endl;
+   // std::cout << "deformed bottom: " << real(neighbors_deformed[3]) << ", " << imag(neighbors_deformed[3]) << std::endl;
+  
+   neighbourFile << "leftX_d, leftY_d, rightX_d rightY_d, topX_d, topY_d, bottomX_d, bottomY_d\n";
    neighbourFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
    neighbourFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
    neighbourFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
@@ -380,6 +484,18 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
    double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
 
+   // if (dudx != 1.0 || dudy != 0.0 || dvdx != 0.0 || dvdy != 1.0) {
+   //    std::cout << "dudx: " << dudx << ", dudy: " << dudy << ", dvdx: " << dvdx << ", dvdy: " << dvdy << std::endl;
+   //    std::cout << "original x, y: " << x << ", " << y << std::endl;
+   //    std::cout << "original left: " << real(neighbors[0]) << ", " << imag(neighbors[0]) << std::endl;
+   //    std::cout << "deformed left: " << real(neighbors_deformed[0]) << ", " << imag(neighbors_deformed[0]) << std::endl;
+   //    std::cout << "original right: " << real(neighbors[1]) << ", " << imag(neighbors[1]) << std::endl;
+   //    std::cout << "deformed right: " << real(neighbors_deformed[1]) << ", " << imag(neighbors_deformed[1]) << std::endl;
+   //    std::cout << "original top: " << real(neighbors[2]) << ", " << imag(neighbors[2]) << std::endl;
+   //    std::cout << "deformed top: " << real(neighbors_deformed[2]) << ", " << imag(neighbors_deformed[2]) << std::endl;
+   //    std::cout << "original bottom: " << real(neighbors[3]) << ", " << imag(neighbors[3]) << std::endl;
+   //    std::cout << "deformed bottom: " << real(neighbors_deformed[3]) << ", " << imag(neighbors_deformed[3]) << std::endl;
+   // }
 
    strainFile << "X,Y,F11,F12,F21,F22\n";
    strainFile << x << "," << y << ",";
@@ -388,16 +504,16 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    eigenvalueFile << x << "," << y << ", "; 
    eigenvalueFile2 << x << "," << y << ", ";
    eigenvalueFile3 << x << "," << y << ", ";
-   storeEigens(dudx, dudy, dvdx, dvdy, eigenvalueFile,eigenvalueFile2,eigenvalueFile3);
+   storeEigens(dudx, dudy, dvdx, dvdy, eigenvalueFile, eigenvalueFile2, eigenvalueFile3);
 
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
 
-Vec2D deformRect( Vec2D v ) {
-   double x = real(v);
-   double y = imag(v);
-   return Vec2D(x + 0.4 * x * x, y );
-}
+// Vec2D deformRect( Vec2D v ) {
+//    double x = real(v);
+//    double y = imag(v);
+//    return Vec2D(x + 0.4 * x * x, y );
+// }
 
 string double_to_str(double f) {
    std::string str = std::to_string (f);
@@ -407,55 +523,80 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   // string shape = "rect100_seed_1_65536";
-   string shape = "trousers";
-   double size = 1; 
-   double h = 0.01;
-   // string fileName = shape + "_size_" + double_to_str(size) + "_h_" + double_to_str(h);
-   string fileName = shape; 
-   std::cout << fileName << std::endl;
-   auto deform = deformTrousers;
+   // // string shape = "rect100_seed_1_65536";
+   // string shape = "identity";
+   // double size = 1; 
+   // double h = 0.01;
+   // // string fileName = shape + "_size_" + double_to_str(size) + "_h_" + double_to_str(h);
+   // string fileName = shape; 
+   // std::cout << fileName << std::endl;
+   // auto deform = deformFunc;
 
-   srand( time(NULL) );
+   // srand( time(NULL) );
 
-   int s = 16; // make it smaller to speed up
-   auto start = high_resolution_clock::now(); // Added for timing
+   // int s = 16; // make it smaller to speed up
+   // auto start = high_resolution_clock::now(); // Added for timing
 
-   // shape.csv
-   std::ofstream origFile("../output/" + shape + ".csv");
-   std::ofstream strainFile("../output/" + fileName + "_strain.csv");
-   std::ofstream neighbourFile("../output/" + shape + "_neighbour_displacements.csv");
-   std::ofstream displacementFile("../output/" + shape + "_displacements.csv");
-   std::ofstream eigenvaluesFile2("../output/" + shape + "_eigenvalues2.csv");
-   std::ofstream eigenvaluesFile3("../output/" + shape + "_eigenvalues3.csv");
-   std::ofstream eigenvaluesFile("../output/" + shape + "_eigenvalues.csv");std::ofstream eigenvectorFile("../output/" + shape + "_eigenvectors.csv");
+   // // shape.csv
+   // std::ofstream origFile("../output/" + shape + ".csv");
+   // std::ofstream strainFile("../output/" + fileName + "deformation_gradient.csv");
+   // std::ofstream neighbourFile("../output/" + shape + "_neighbour_displacements.csv");
+   // std::ofstream displacementFile("../output/" + shape + "_displacements.csv");
+   // std::ofstream eigenvaluesFile2("../output/" + shape + "_eigenvalues2.csv");
+   // std::ofstream eigenvaluesFile3("../output/" + shape + "_eigenvalues3.csv");
+   // std::ofstream eigenvaluesFile("../output/" + shape + "_eigenvalues.csv");std::ofstream eigenvectorFile("../output/" + shape + "_eigenvectors.csv");
 
-   for( int j = 0; j < s; j++ )
-   {
-      cerr << "row " << j << " of " << s << endl;
-      for( int i = 0; i < s; i++ )
-      {
-         Vec2D x0(((double)i / (s - 1)),// * 2 * size - size,
-                  ((double)j / (s - 1))// * 2 * size - size 
-         );
-         double x = real(x0);
-         double y = imag(x0);
-         double lam = 1.0;
-         double mu = 1.0;
-         Vec2D left{ x - h/2, y };
-         Vec2D right{ x + h/2, y };
-         Vec2D top{ x, y + h/2 };
-         Vec2D bottom{ x, y - h/2 };
-         Vec2D solved_vec = NAN;
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-            origFile << x << "," << y << "," << real(x0) << "," << imag(x0) << "\n";
-            getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile, eigenvaluesFile, eigenvectorFile, eigenvaluesFile2, eigenvaluesFile3);
-            solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deform);
-            displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
-         }
-      } 
+   // for( int j = 0; j < s; j++ )
+   // {
+   //    cerr << "row " << j << " of " << s << endl;
+   //    for( int i = 0; i < s; i++ )
+   //    {
+   //       Vec2D x0(((double)i / (s - 1)),// * 2 * size - size,
+   //                ((double)j / (s - 1))// * 2 * size - size 
+   //       );
+   //       double x = real(x0);
+   //       double y = imag(x0);
+   //       Vec2D left{ x - h/2, y };
+   //       Vec2D right{ x + h/2, y };
+   //       Vec2D top{ x, y + h/2 };
+   //       Vec2D bottom{ x, y - h/2 };
+   //       Vec2D solved_vec = NAN;
+   //       if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
+   //          origFile << x << "," << y << "," << real(x0) << "," << imag(x0) << "\n";
+   //          getDeformationGradientAndStress(x0, h, deform, strainFile, neighbourFile, eigenvaluesFile, eigenvectorFile, eigenvaluesFile2, eigenvaluesFile3);
+   //          solved_vec = solve(x0, boundaryDirichlet, boundaryNeumann, deform);
+   //          displacementFile << real(solved_vec) << "," << imag(solved_vec) << "\n";
+   //       }
+   //    } 
+   // }
+   // auto stop = high_resolution_clock::now(); // Added for timing
+   // auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
+   // cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
+   const int numRuns = 1000;
+   vector<Vec2D> results;
+   for (int i = 0; i < numRuns; ++i) {
+       Vec2D solved = solve(Vec2D(0.5, 0.5), boundaryDirichlet, boundaryNeumann, deformFunc);
+       results.push_back(solved);
    }
-   auto stop = high_resolution_clock::now(); // Added for timing
-   auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
-   cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
+
+   double sumReal = 0.0, sumImag = 0.0;
+   for (const auto& res : results) {
+       sumReal += real(res);
+       sumImag += imag(res);
+   }
+
+   double meanReal = sumReal / numRuns;
+   double meanImag = sumImag / numRuns;
+
+   double varianceReal = 0.0, varianceImag = 0.0;
+   for (const auto& res : results) {
+       varianceReal += (real(res) - meanReal) * (real(res) - meanReal);
+       varianceImag += (imag(res) - meanImag) * (imag(res) - meanImag);
+   }
+
+   varianceReal /= numRuns;
+   varianceImag /= numRuns;
+
+   cout << "Mean: (" << meanReal << ", " << meanImag << ")" << endl;
+   cout << "Variance: (" << varianceReal << ", " << varianceImag << ")" << endl;
 }
