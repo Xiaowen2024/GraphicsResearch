@@ -1,5 +1,5 @@
 
-// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumann.cpp -o gradientEstimateNeumannTilted -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
+// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNonZeroNeumann.cpp -o gradientEstimateNonZeroNeumann -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
 
 #include <algorithm>
 #include <array>
@@ -9,9 +9,9 @@
 #include <random>
 #include <vector>
 #include <fstream>
-#include <chrono> // Added for timing
+#include <chrono> 
 using namespace std;
-using namespace std::chrono; // Added for timing
+using namespace std::chrono; 
 
 #include <Eigen/Dense> 
 
@@ -35,7 +35,7 @@ using Vec2D = complex<double>;
 double length( Vec2D u ) { return sqrt( norm(u) ); }
 double angleOf(Vec2D u) { return arg(u); }
 Vec2D rotate90( Vec2D u ) { return Vec2D( -imag(u), real(u) ); }
-double   dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
+double  dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
 double cross(Vec2D u, Vec2D v) { return real(u)*imag(v) - imag(u)*real(v); }
 vector<Vec2D> multiply(Vec2D A, Vec2D B) {
       vector<Vec2D> result;
@@ -65,26 +65,6 @@ Vec2D closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
 // returns true if the point b on the polyline abc is a silhoutte relative to x
 bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
    return cross(b-a,x-a) * cross(c-b,x-b) < 0;
-}
-
-// // returns the time t at which the ray x+tv intersects segment ab,
-// // or infinity if there is no intersection
-// double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
-//    Vec2D u = b - a;
-//    Vec2D w = x - a;
-//    double d = cross(v,u);
-//    double s = cross(v,w) / d;
-//    double t = cross(u,w) / d;
-//    if (t > 0. && 0. <= s && s <= 1.) {
-//       return t;
-//    }
-//    return infinity;
-// }
-
-Vec2D deformShear( Vec2D v ) {
-   double x = real(v);
-   double y = imag(v);
-   return Vec2D( 0.42222 * x + 0.27822 * y, 0.12322 * x  + 0.62222  * y);
 }
 
 using Polyline = vector<Vec2D>;
@@ -176,30 +156,70 @@ double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    return d;
 }
 
-// // finds the first intersection y of the ray x+tv with the given polylines P,
-// // restricted to a ball of radius r around x.  The flag onBoundary indicates
-// // whether the first hit is on a boundary segment (rather than the sphere), and
-// // if so sets n to the normal at the hit point.
-// Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
-//                          const vector<Polyline>& P,
-//                          Vec2D& n, bool& onBoundary ) {
-//    double tMin = r; // smallest hit time so far
-//    n = Vec2D{ 0.0, 0.0 }; // first hit normal
-//    onBoundary = false; // will be true only if the first hit is on a segment
-//    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
-//       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
-//          const double c = 1e-5; // ray offset (to avoid self-intersection)
-//          double t = rayIntersection( x + c*v, v, P[i][j], P[i][j+1] );
-//          if( t < tMin ) { // closest hit so far
-//             tMin = t;
-//             n = rotate90( P[i][j+1] - P[i][j] ); // get normal
-//             n /= length(n); // make normal unit length
-//             onBoundary = true;
-//          }
-//       }
-//    }
-//    return x + tMin*v; // first hit location
-// }
+vector<Polyline> boundaryDirichlet =  {{ Vec2D(0, 1), Vec2D(0, 0) }};
+
+vector<Polyline> boundaryNeumann = {{ Vec2D(0, 0), Vec2D(0.5, 0), Vec2D(1, 0), Vec2D(1, 0.5), Vec2D(1, 1), Vec2D(0.5, 1),
+                                     Vec2D(0, 1) }};
+
+Vec2D getDirichletValue( Vec2D point ) {
+   if (real(point) == 0) {
+      return point;
+   }
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+   return nan;
+}
+
+Vec2D getNeumannValue( Vec2D point ) {
+   if (real(point) == 1) {
+      return Vec2D(0.5, 0);
+   }
+   Vec2D nan = numeric_limits<double>::quiet_NaN();
+   return nan;
+}
+
+double get2DFreeSpaceGreenKernel( Vec2D x, Vec2D y ) {
+   // Green's function for the Laplace operator in 2D
+   // G(x,y) = 1/(2*pi) * log(|y-x|)
+   if (x == y) {
+      return 0.0;
+   }
+   return 1.0/(2.0*M_PI) * log(length(y-x));
+}
+
+double get2DPoissonKernel(Vec2D x, Vec2D y, Vec2D n) {
+   // Poisson kernel for the unit disk
+   // P(x,y) = 1/((2*pi) * /|y-x|^2) * (y - x) * n 
+   // where n is the unit normal at y
+   if (x == y) {
+      return 0.0;
+   }
+   return 1.0/(2.0*M_PI) * dot(n, y - x)/ (length(y-x)*length(y-x));
+}
+
+
+double get2DFreeSpaceGreenKernelforBall( Vec2D x, Vec2D y, double r) {
+   // Green's function for the Laplace operator in 2D for the ball with Radius r
+   // G(x,y) = 1/(2*pi) * log(r / |y-x|)
+   if (x == y) {
+      return 0.0;
+   }
+   return 1.0/(2.0*M_PI) * log(r / length(y-x));
+}
+
+double get2DPoissonKernelforBall(double r) {
+   // Poisson kernel for the ball with Radius r
+   // P(x,y) = 1/((2*pi) * /|y-x|^2) * (y - x) * n 
+   return 1.0/ ((2.0*M_PI) * r);
+}
+
+double sampleSourceDistance(double rMin, double rMax) {
+   static std::random_device rd;
+   static std::mt19937 gen(rd());
+   static std::uniform_real_distribution<double> dist(0.0, 1.0);
+
+   double U = dist(gen); // Uniform sample in (0,1)
+   return rMin * exp(U * log(rMax / rMin));
+}
 
 Vec2D solve( Vec2D x0, // evaluation point
    vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
@@ -260,16 +280,16 @@ Vec2D solve( Vec2D x0, // evaluation point
       return Vec2D(sum_x/walker, sum_y/walker);
 }
 
-
-
-vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
-              vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
-              vector<Polyline> boundaryNeumann, // reflecting part of the boundary
-              function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
-   const double eps = 0.000001; // stopping tolerance
-   const double rMin = 0.000001; // minimum step size
-   const int nWalks = 1000000 ;//100000000; // number of Monte Carlo samples
-   const int maxSteps = 65536; // maximum walk length
+// solver for a poisson problem with non-zero Neumann boundary conditions
+vector<Vec2D> solveGradient( Vec2D x0,
+              vector<Polyline> boundaryDirichlet, 
+              vector<Polyline> boundaryNeumann,
+              Vec2D source,
+              function<Vec2D(Vec2D)> getDirichletValue, function<Vec2D(Vec2D)> getNeumannValue, std::ofstream& displacementFile, std::ofstream& gradientFile) { 
+   const double eps = 0.000001; 
+   const double rMin = 0.000001; 
+   const int nWalks = 100000;
+   const int maxSteps = 65536; 
    double sum_11 = 0.0; 
    double sum_12 = 0.0;
    double sum_21 = 0.0; 
@@ -300,6 +320,10 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       Vec2D closestPoint;
       bool isStarting = true;
       Vec2D normal = Vec2D(0, 0);
+      double neumann_contribution_x = 0;
+      double neumann_contribution_y = 0;
+      double source_contribution_x = 0;
+      double source_contribution_y = 0;
       double raidus = 0;
       do { 
          center = x;
@@ -309,24 +333,39 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
          dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
          r = max( rMin, min( dDirichlet, dSilhouette ));
 
-         // intersect a ray with the star-shaped region boundary
+         // compute single sample neumann contribution
          double theta = random( -M_PI, M_PI );
          if( onBoundary ) { // sample from a hemisphere around the normal
-            theta = theta/2. + angleOf(n);
+            Vec2D normal_derivative = getNeumannValue(x);
+            if (!isnan(real(normal_derivative)) && !isnan(imag(normal_derivative))) {
+               neumann_contribution_x += real(normal_derivative) * get2DFreeSpaceGreenKernelforBall(x0, x, r);
+               neumann_contribution_y += imag(normal_derivative) * get2DFreeSpaceGreenKernelforBall(x0, x, r);
+            }
+            else {
+               theta = theta/2. + angleOf(n);
+            }
          }
-         Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
+         Vec2D v{ cos(theta), sin(theta) }; 
          x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
          if (isStarting){
             isStarting = false;
             normal = v / length(v);
             raidus = dDirichlet;
          }
+
+         // compute single sample source contribution
+         double t_source = sampleSourceDistance(rMin, r);
+         Vec2D y = x + t_source * Vec2D{ cos(theta), sin(theta) };
+         if (length(y - x0) < length(x - x0)) {
+            source_contribution_x += real(source) * get2DFreeSpaceGreenKernelforBall(x0, y, t_source);
+            source_contribution_y += imag(source) * get2DFreeSpaceGreenKernelforBall(x0, y, t_source);
+         }
          steps++;
       }
       while(dDirichlet > eps && steps < maxSteps);
 
       if( steps >= maxSteps ) continue;
-      Vec2D estimated_u = g(closestPoint);
+      Vec2D estimated_u = Vec2D(real(getDirichletValue(closestPoint)) - neumann_contribution_x + source_contribution_x, imag(getDirichletValue(closestPoint)) - neumann_contribution_y + source_contribution_y);
       vector<Vec2D> estimated_normal = multiply(estimated_u, normal);
       estimated_normal = { Vec2D(2 * 1/raidus * real(estimated_normal[0]), 2 * 1/raidus * imag(estimated_normal[0])),
       Vec2D(2 * 1/raidus * real(estimated_normal[1]), 2 * 1/raidus * imag(estimated_normal[1])) };
@@ -352,18 +391,6 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    Vec2D row2 = Vec2D(sum_21/walker, sum_22/walker);
    return {row1, row2};
 }
-
-// for simplicity, in this code we assume that the Dirichlet and Neumann
-// boundary polylines form a collection of closed polygons (possibly with holes),
-// and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = {{ Vec2D(0.2, 0), Vec2D(0.4, 0), Vec2D(0.7, 0.5), Vec2D(1, 0), Vec2D(1.2, 0), Vec2D(1.2, 1), Vec2D(0.2, 1), Vec2D(0.2, 0) }};
-
-// vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 0.5), Vec2D(1, 1) }};
-vector<Polyline> boundaryNeumann = {};
- 
-// vector<Polyline> boundaryDirichlet =  {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1, 0) }};
-
-// vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 1)}};
 
 // these routines are not used by WoSt itself, but are rather used to check
 // whether a given evaluation point is actually inside the domain
@@ -396,8 +423,8 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
 }
 
 Vec2D displacement(Vec2D v) { 
-   
-   vector<Polyline> displacedPoints = {{ Vec2D(0, 0), Vec2D(0.4, 0), Vec2D(0.7, 0.5), Vec2D(1, 0), Vec2D(1.4, 0), Vec2D(1.2, 1), Vec2D(0.2, 1), Vec2D(0.2, 0) }};
+   vector<Polyline> displacedPoints =  {{ Vec2D(1.4, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.2, 0)}};
+   // vector<Polyline> displacedPoints = {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1.4, 0) }};
 
    Vec2D nan = numeric_limits<double>::quiet_NaN();
 
@@ -406,6 +433,10 @@ Vec2D displacement(Vec2D v) {
       return nan;
    }
    return interpolatedDisplacement;
+}
+
+Vec2D identity( Vec2D v ) {
+  return v;
 }
 
 // Returns true if the point x is contained in the region bounded by the Dirichlet
@@ -484,12 +515,18 @@ void storeEigens(double dudx, double dudy, double dvdx, double dvdy,
 }
 
 vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, 
-                                             std::ofstream& gradientFile
+                                             std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& eigenvalueFile, std::ofstream& eigenvectorFile,
+                                             std::ofstream& eigenvalueFile2, std::ofstream& eigenvalueFile3
                                              ) {
    double x = real(point);
    double y = imag(point);
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    Vec2D solved_vec = nan; 
+   if (!strainFile.is_open()) {
+      std::cerr << "Unable to open file: " << std::endl;
+      return vector<Vec2D>{solved_vec, solved_vec};
+   }
+
    Vec2D left{ x - h/2, y };
    Vec2D right{ x + h/2, y };
    Vec2D top{ x, y + h/2 };
@@ -498,7 +535,7 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    Vec2D farRight{ x + h, y };
    Vec2D farTop{ x, y + h };
    Vec2D farBottom{ x, y - h };
-   vector<Vec2D> neighbors = {left, right, top, bottom};
+   vector<Vec2D> neighbors = {left, right, top, bottom, farLeft, farRight, farTop, farBottom};
    vector<Vec2D> neighbors_deformed = {};
   
    for (int i = 0; i < neighbors.size(); i ++){
@@ -510,14 +547,32 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
          return vector<Vec2D>{nan, nan};
       }
    }
+  
+   neighbourFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
+   neighbourFile << real(left) << "," << imag(left) << ",";
+   neighbourFile << real(right) << "," << imag(right) << ",";
+   neighbourFile << real(top) << "," << imag(top) << ",";
+   neighbourFile << real(bottom) << "," << imag(bottom) << "\n";
+  
+   neighbourFile << "leftX_d, leftY_d, rightX_d rightY_d, topX_d, topY_d, bottomX_d, bottomY_d\n";
+   neighbourFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
+   neighbourFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
+   neighbourFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
+   neighbourFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
 
-   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
-   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
-   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
-   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
-   gradientFile << "X,Y,F11,F12,F21,F22\n";
-   gradientFile << real(point) << "," << imag(point) << ",";
-   gradientFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+   double dudx = (8 * real(neighbors_deformed[1]) - 8 * real(neighbors_deformed[0]) + real(neighbors_deformed[4]) - real(neighbors_deformed[5])) / (6 * h);
+   double dudy = (8 * real(neighbors_deformed[2]) - 8 * real(neighbors_deformed[3]) + real(neighbors_deformed[7]) - real(neighbors_deformed[6])) / (6 * h);
+   double dvdx = (8 * imag(neighbors_deformed[1]) - 8 * imag(neighbors_deformed[0]) + imag(neighbors_deformed[4]) - imag(neighbors_deformed[5])) / (6 * h);
+   double dvdy = (8 * imag(neighbors_deformed[2]) - 8 * imag(neighbors_deformed[3]) + imag(neighbors_deformed[7]) - imag(neighbors_deformed[6])) / (6 * h);
+
+   strainFile << "X,Y,F11,F12,F21,F22\n";
+   strainFile << x << "," << y << ",";
+   strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+
+   eigenvalueFile << x << "," << y << ", "; 
+   eigenvalueFile2 << x << "," << y << ", ";
+   eigenvalueFile3 << x << "," << y << ", ";
+
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
 
@@ -529,14 +584,14 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_regular";
+   string shape = "gradient_estimate_free_boundary_gravity_test";
    double h = 0.01;
    string fileName = shape; 
-   auto deform = displacement;
+   auto deform = identity;
+   int s = 16;
 
-   int s = 16; 
    std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
-   std::ofstream displacementFile("../output/" + fileName + "_displacement.csv");
+   std::ofstream displacementFile("../output/" + shape + "_displacements.csv");
 
    for( int j = 0; j < s; j++ )
    {
@@ -549,7 +604,7 @@ int main( int argc, char** argv ) {
          double x = real(x0);
          double y = imag(x0);
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann)){
-            vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+            vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, Vec2D(0, 0.0981), getDirichletValue, getNeumannValue, displacementFile, gradientFile);
          }
       } 
    }

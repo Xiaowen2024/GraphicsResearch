@@ -1,5 +1,5 @@
 
-// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumann.cpp -o gradientEstimateNeumannTilted -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
+// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumannSingle.cpp -o gradientEstimateNeumannSingle -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
 
 #include <algorithm>
 #include <array>
@@ -67,27 +67,13 @@ bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
    return cross(b-a,x-a) * cross(c-b,x-b) < 0;
 }
 
-// // returns the time t at which the ray x+tv intersects segment ab,
-// // or infinity if there is no intersection
-// double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
-//    Vec2D u = b - a;
-//    Vec2D w = x - a;
-//    double d = cross(v,u);
-//    double s = cross(v,w) / d;
-//    double t = cross(u,w) / d;
-//    if (t > 0. && 0. <= s && s <= 1.) {
-//       return t;
-//    }
-//    return infinity;
-// }
-
-Vec2D deformShear( Vec2D v ) {
-   double x = real(v);
-   double y = imag(v);
-   return Vec2D( 0.42222 * x + 0.27822 * y, 0.12322 * x  + 0.62222  * y);
-}
 
 using Polyline = vector<Vec2D>;
+
+vector<Polyline> boundaryDirichlet =  {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1, 0)}};
+
+vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 0.5), Vec2D(1, 1) }};
+
 
 double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
     Vec2D u = b - a;
@@ -268,7 +254,7 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
               function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
    const double eps = 0.000001; // stopping tolerance
    const double rMin = 0.000001; // minimum step size
-   const int nWalks = 1000000 ;//100000000; // number of Monte Carlo samples
+   const int nWalks = 10000000; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
    double sum_11 = 0.0; 
    double sum_12 = 0.0;
@@ -343,6 +329,8 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       sum_y += imag(estimated_u);
    } 
 
+
+   displacementFile << "X,Y,Ux,Uy";
    displacementFile << real(x0) << "," << imag(x0) << ",";
    displacementFile << sum_x /walker  << "," << sum_y/walker << "\n";
    gradientFile << "X,Y,F11,F12,F21,F22\n";
@@ -356,11 +344,10 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
 // for simplicity, in this code we assume that the Dirichlet and Neumann
 // boundary polylines form a collection of closed polygons (possibly with holes),
 // and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = {{ Vec2D(0.2, 0), Vec2D(0.4, 0), Vec2D(0.7, 0.5), Vec2D(1, 0), Vec2D(1.2, 0), Vec2D(1.2, 1), Vec2D(0.2, 1), Vec2D(0.2, 0) }};
+// vector<Polyline> boundaryDirichlet =  {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
 
-// vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 0.5), Vec2D(1, 1) }};
-vector<Polyline> boundaryNeumann = {};
- 
+// vector<Polyline> boundaryNeumann = {{ Vec2D(0, 0), Vec2D(0.5, 0.5), Vec2D(1, 0) }};
+
 // vector<Polyline> boundaryDirichlet =  {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1, 0) }};
 
 // vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 1)}};
@@ -396,8 +383,8 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
 }
 
 Vec2D displacement(Vec2D v) { 
-   
-   vector<Polyline> displacedPoints = {{ Vec2D(0, 0), Vec2D(0.4, 0), Vec2D(0.7, 0.5), Vec2D(1, 0), Vec2D(1.4, 0), Vec2D(1.2, 1), Vec2D(0.2, 1), Vec2D(0.2, 0) }};
+   // vector<Polyline> displacedPoints = {   {{ Vec2D(-0.2, 0), Vec2D(1.4, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
+   vector<Polyline> displacedPoints = {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1.4, 0)}};
 
    Vec2D nan = numeric_limits<double>::quiet_NaN();
 
@@ -406,6 +393,10 @@ Vec2D displacement(Vec2D v) {
       return nan;
    }
    return interpolatedDisplacement;
+}
+
+Vec2D deformFunc( Vec2D v ) {
+  return v;
 }
 
 // Returns true if the point x is contained in the region bounded by the Dirichlet
@@ -419,9 +410,12 @@ bool insideDomain( Vec2D x,
 {
    double Theta = signedAngle( x, boundaryDirichlet ) +
                   signedAngle( x, boundaryNeumann );
+                  
    const double delta = 1e-4; // numerical tolerance
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
+
+
 
 void storeEigenvectors(double dudx, double dudy, double dvdx, double dvdy, std::ofstream& eigenvectorFile) {
    // Create matrix
@@ -484,12 +478,18 @@ void storeEigens(double dudx, double dudy, double dvdx, double dvdy,
 }
 
 vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, 
-                                             std::ofstream& gradientFile
+                                             std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& eigenvalueFile, std::ofstream& eigenvectorFile,
+                                             std::ofstream& eigenvalueFile2, std::ofstream& eigenvalueFile3
                                              ) {
    double x = real(point);
    double y = imag(point);
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    Vec2D solved_vec = nan; 
+   if (!strainFile.is_open()) {
+      std::cerr << "Unable to open file: " << std::endl;
+      return vector<Vec2D>{solved_vec, solved_vec};
+   }
+
    Vec2D left{ x - h/2, y };
    Vec2D right{ x + h/2, y };
    Vec2D top{ x, y + h/2 };
@@ -498,7 +498,7 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
    Vec2D farRight{ x + h, y };
    Vec2D farTop{ x, y + h };
    Vec2D farBottom{ x, y - h };
-   vector<Vec2D> neighbors = {left, right, top, bottom};
+   vector<Vec2D> neighbors = {left, right, top, bottom, farLeft, farRight, farTop, farBottom};
    vector<Vec2D> neighbors_deformed = {};
   
    for (int i = 0; i < neighbors.size(); i ++){
@@ -510,14 +510,32 @@ vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<V
          return vector<Vec2D>{nan, nan};
       }
    }
+  
+   neighbourFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
+   neighbourFile << real(left) << "," << imag(left) << ",";
+   neighbourFile << real(right) << "," << imag(right) << ",";
+   neighbourFile << real(top) << "," << imag(top) << ",";
+   neighbourFile << real(bottom) << "," << imag(bottom) << "\n";
+    
+   neighbourFile << "leftX_d, leftY_d, rightX_d rightY_d, topX_d, topY_d, bottomX_d, bottomY_d\n";
+   neighbourFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
+   neighbourFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
+   neighbourFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
+   neighbourFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
 
-   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
-   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
-   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
-   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
-   gradientFile << "X,Y,F11,F12,F21,F22\n";
-   gradientFile << real(point) << "," << imag(point) << ",";
-   gradientFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+   double dudx = (8 * real(neighbors_deformed[1]) - 8 * real(neighbors_deformed[0]) + real(neighbors_deformed[4]) - real(neighbors_deformed[5])) / (6 * h);
+   double dudy = (8 * real(neighbors_deformed[2]) - 8 * real(neighbors_deformed[3]) + real(neighbors_deformed[7]) - real(neighbors_deformed[6])) / (6 * h);
+   double dvdx = (8 * imag(neighbors_deformed[1]) - 8 * imag(neighbors_deformed[0]) + imag(neighbors_deformed[4]) - imag(neighbors_deformed[5])) / (6 * h);
+   double dvdy = (8 * imag(neighbors_deformed[2]) - 8 * imag(neighbors_deformed[3]) + imag(neighbors_deformed[7]) - imag(neighbors_deformed[6])) / (6 * h);
+
+   strainFile << "X,Y,F11,F12,F21,F22\n";
+   strainFile << x << "," << y << ",";
+   strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
+
+   eigenvalueFile << x << "," << y << ", "; 
+   eigenvalueFile2 << x << "," << y << ", ";
+   eigenvalueFile3 << x << "," << y << ", ";
+
    return vector<Vec2D>{ Vec2D{dudx, dudy}, Vec2D{dvdx, dvdy}};
 }
 
@@ -528,29 +546,12 @@ string double_to_str(double f) {
    return str;
 }
 
+
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_regular";
-   double h = 0.01;
-   string fileName = shape; 
+   string fileName = "gradient_estimate_free_boundary_rect_fast_finite_difference";
    auto deform = displacement;
-
-   int s = 16; 
    std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
-   std::ofstream displacementFile("../output/" + fileName + "_displacement.csv");
-
-   for( int j = 0; j < s; j++ )
-   {
-      cerr << "row " << j << " of " << s << endl;
-      for( int i = 0; i < s; i++ )
-      {
-         Vec2D x0(((double)i / (s - 1)),
-                  ((double)j / (s - 1))
-         );
-         double x = real(x0);
-         double y = imag(x0);
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann)){
-            vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-         }
-      } 
-   }
+   std::ofstream displacementFile("../output/" + fileName + "_displacementF.csv");
+   vector<Vec2D> gradient = solveGradient(Vec2D(0.9, 0.5), boundaryDirichlet, boundaryNeumann, displacement, displacementFile, gradientFile);
+   cout << "Solved: (" << real(gradient[0]) << ", " << imag(gradient[0]) << ", " << real(gradient[1]) << ", " << imag(gradient[1]) << ")" << endl;
 }

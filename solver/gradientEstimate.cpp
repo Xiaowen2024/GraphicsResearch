@@ -67,26 +67,6 @@ bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
    return cross(b-a,x-a) * cross(c-b,x-b) < 0;
 }
 
-// // returns the time t at which the ray x+tv intersects segment ab,
-// // or infinity if there is no intersection
-// double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
-//    Vec2D u = b - a;
-//    Vec2D w = x - a;
-//    double d = cross(v,u);
-//    double s = cross(v,w) / d;
-//    double t = cross(u,w) / d;
-//    if (t > 0. && 0. <= s && s <= 1.) {
-//       return t;
-//    }
-//    return infinity;
-// }
-
-Vec2D deformShear( Vec2D v ) {
-   double x = real(v);
-   double y = imag(v);
-   return Vec2D( 0.42222 * x + 0.27822 * y, 0.12322 * x  + 0.62222  * y);
-}
-
 using Polyline = vector<Vec2D>;
 
 double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
@@ -204,130 +184,91 @@ Vec2D solve( Vec2D x0, // evaluation point
    vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
    vector<Polyline> boundaryNeumann, // reflecting part of the boundary
    function<Vec2D(Vec2D)> g ) { // Dirichlet boundary values
-const double eps = 0.000001; // stopping tolerance
-const double rMin = 0.000001; // minimum step size
-const int nWalks = 10000000; // number of Monte Carlo samples
-const int maxSteps = 65536; // maximum walk length
-double sum_x = 0.0; // running sum of boundary contributions
-double sum_y = 0.0;
-int i = 0;
-int walker = 0;
-int countX1 = 0;
-int countY1 = 0;
-int biggerX = 0;
-int smallerX = 0;
-int biggerY = 0;
-int smallerY = 0;
-// unsigned seed = 30;
-// srand(seed);
+      const double eps = 0.000001; // stopping tolerance
+      const double rMin = 0.000001; // minimum step size
+      const int nWalks = 10000000; // number of Monte Carlo samples
+      const int maxSteps = 65536; // maximum walk length
+      double sum_x = 0.0; // running sum of boundary contributions
+      double sum_y = 0.0;
+      int i = 0;
+      int walker = 0;
+      int countX1 = 0;
+      int countY1 = 0;
+      int biggerX = 0;
+      int smallerX = 0;
+      int biggerY = 0;
+      int smallerY = 0;
+      
+      #pragma omp parallel for reduction(+:sum)
+      double nextTheta = -1;
+      bool isStarting = true;
+      for( i = 0; i < nWalks; i++ ) {
+         std::mt19937 generator(i);  
+         std::uniform_real_distribution<double> dist(-M_PI, M_PI);
+         Vec2D x = x0; // start walk at the evaluation point
+         Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
+         bool onBoundary = false; // flag whether x is on the interior or boundary
+         double r, dDirichlet, dSilhouette; // radii used to define star shaped region
+         int steps = 0;
+         Vec2D closestPoint;
+         do { 
+         auto p = distancePolylines( x, boundaryDirichlet );
+         dDirichlet = p.first;
+         closestPoint = p.second;
+         dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
+         r = max( rMin, min( dDirichlet, dSilhouette ));
 
-#pragma omp parallel for reduction(+:sum)
-double nextTheta = -1;
-bool isStarting = true;
-for( i = 0; i < nWalks; i++ ) {
-std::mt19937 generator(i);  
-std::uniform_real_distribution<double> dist(-M_PI, M_PI);
-Vec2D x = x0; // start walk at the evaluation point
-Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
-bool onBoundary = false; // flag whether x is on the interior or boundary
-double r, dDirichlet, dSilhouette; // radii used to define star shaped region
-int steps = 0;
-Vec2D closestPoint;
-do { 
-// compute the radius of the largest star-shaped region
-auto p = distancePolylines( x, boundaryDirichlet );
-dDirichlet = p.first;
-closestPoint = p.second;
-// dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
-r = max( rMin, dDirichlet);
+         // intersect a ray with the star-shaped region boundary
+         // double theta;
+         // if (isStarting){
+         // if (nextTheta != -1){
+         //    theta = nextTheta;
+         //    nextTheta = -1;
+         // } 
+         // else {
+         //    theta = random( -M_PI, M_PI );
+         //    nextTheta = 2 * M_PI - theta;
+         // } 
+         // isStarting = false;
+         // } 
 
-// intersect a ray with the star-shaped region boundary
-double theta;
-if (isStarting){
- if (nextTheta != -1){
-    theta = nextTheta;
-    nextTheta = -1;
- } 
- else {
-    theta = random( -M_PI, M_PI );
-    nextTheta = 2 * M_PI - theta;
- } 
- isStarting = false;
-} 
+         double theta = random( -M_PI, M_PI );
+         if( onBoundary ) { // sample from a hemisphere around the normal
+            theta = theta/2. + angleOf(n);
+         }
+         Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
+         x =  intersectPolylines( x, v, r, boundaryDirichlet, n, onBoundary );
+         steps++;
+         }
+         while(dDirichlet > eps && steps < maxSteps);
 
-theta = random( -M_PI, M_PI );
-if( onBoundary ) { // sample from a hemisphere around the normal
- theta = theta/2. + angleOf(n);
-}
-Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
-x = x + r * v; //intersectPolylines( x, v, r, boundaryDirichlet, n, onBoundary );
-steps++;
-}
-while(dDirichlet > eps);
+         Vec2D eval_vec = g(x);
 
-// x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
-
-// std::cout << "dDirichlet: " << length(x - closestPoint) << std::endl;
-
-//stop if we hit the Dirichlet boundary, or the walk is too long
-
-// if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
-
-Vec2D eval_vec = g(x);
-// if (real(closestPoint) == 0 && imag(closestPoint) != 0) {
-//    countX1 += 1;
-// }
-// if (real(closestPoint) != 0 && imag(closestPoint) == 0) {
-//    countY1 += 1;
-// }
-
-// if (real(x) > 0.1){
-//    biggerX += 1;
-// }
-// else if (real(x) < 0.1){
-//    smallerX += 1;
-// }
-
-// if (imag(x) > 0.1){
-//    biggerY += 1;
-// }
-// else if (imag(x) < 0.1){
-//    smallerY += 1;
-// }
-// std::cout << "x0: " << real(x0) << ", " << imag(x0) << std::endl;
-// std::cout << "closestPoint: " << real(closestPoint) << ", " << imag(closestPoint) << std::endl;
-// std::cout << "x: " << real(eval_vec) << ", " << imag(eval_vec) << std::endl;
-// assert (!isnan(real(eval_vec)) && !isnan(imag(eval_vec)));
-// assert (real(eval_vec) == real(closestPoint) && imag(eval_vec) == imag(closestPoint));
-
-// get rid of nan
-if (isnan(real(eval_vec)) || isnan(imag(eval_vec))) {
-continue;
-}
-walker += 1;
-sum_x += real(eval_vec);
-sum_y += imag(eval_vec);
-} 
-// cout << "count x1: " << countX1 << ", count y1: " << countY1 << endl;
-// cout << "biggerX: " << biggerX << ", smallerX: " << smallerX << endl;
-// cout << "biggerY: " << biggerY << ", smallerY: " << smallerY << endl;
-// std::cout << "sum_x: " << sum_x << "sum_y: " << sum_y << "walker: " << walker << std::endl;
-return Vec2D(sum_x/walker, sum_y/walker);
+         if (isnan(real(eval_vec)) || isnan(imag(eval_vec))) {
+         continue;
+         }
+         walker += 1;
+         sum_x += real(eval_vec);
+         sum_y += imag(eval_vec);
+      } 
+      return Vec2D(sum_x/walker, sum_y/walker);
 }
 
 
 vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
               vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
               vector<Polyline> boundaryNeumann, // reflecting part of the boundary
-              function<Vec2D(Vec2D)> g, std::ofstream& gradientFile) { // Dirichlet boundary values
+              function<Vec2D(Vec2D)> g, std::ofstream& gradientFile, std::ofstream& displacementFile) { // Dirichlet boundary values
    const double eps = 0.000001; // stopping tolerance
    const double rMin = 0.000001; // minimum step size
-   const int nWalks = 100000000; // number of Monte Carlo samples
+   const int nWalks = 100000; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
    double sum_11 = 0.0; 
    double sum_12 = 0.0;
    double sum_21 = 0.0; 
    double sum_22 = 0.0;
+   double sum_x = 0.0;
+   double sum_y = 0.0;
    int i = 0;
    int walker = 0;
    int countX1 = 0;
@@ -359,65 +300,44 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
          auto p = distancePolylines( x, boundaryDirichlet );
          dDirichlet = p.first;
          closestPoint = p.second;
-         // dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
-         r = max( rMin, dDirichlet);
-
-         // intersect a ray with the star-shaped region boundary
+         dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
+         r = max( rMin, min( dDirichlet, dSilhouette ));
          double theta;
-         // if (isStarting){
-         //    if (nextTheta != -1){
-         //       theta = nextTheta;
-         //       count += 1;
-         //       nextTheta = -1;
-         //    }
-         //    else {
-         //          int zone = nWalks % 6;
-         //          double angle = 2 * M_PI / 6;
-         //          theta = random( -M_PI + angle * zone , -M_PI + angle * (zone + 1));
-         //          nextTheta = theta + M_PI;
-         //    }
-         //    isStarting = false;
-         // } 
-         // else {
-         //    int zone = nWalks % 6;
-         //    double angle = 2 * M_PI / 6;
-         //    theta = random( -M_PI + angle * zone , -M_PI + angle * (zone + 1));
-         // } 
-         // int zone = nWalks % 6;
-         // double angle = 2 * M_PI / 6;
-         // theta = random( -M_PI + angle * zone , -M_PI + angle * (zone + 1));
          theta = random( -M_PI, M_PI );
          if( onBoundary ) { // sample from a hemisphere around the normal
             theta = theta/2. + angleOf(n);
          }
          Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
-         x = x + r * v; //intersectPolylines( x, v, r, boundaryDirichlet, n, onBoundary );
+         x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
          if (isStarting){
             isStarting = false;
             normal = v / length(v);
             raidus = dDirichlet;
          }
-
          steps++;
       }
       while(dDirichlet > eps && steps < maxSteps);
 
       if( steps >= maxSteps ) continue;
       Vec2D estimated_u = g(closestPoint);
-      vector<Vec2D> result = multiply(estimated_u, normal);
-      result = { Vec2D(2 * 1/raidus * real(result[0]), 2 * 1/raidus * imag(result[0])),
-      Vec2D(2 * 1/raidus * real(result[1]), 2 * 1/raidus * imag(result[1])) };
+      vector<Vec2D> estimated_normal = multiply(estimated_u, normal);
+      estimated_normal = { Vec2D(2 * 1/raidus * real(estimated_normal[0]), 2 * 1/raidus * imag(estimated_normal[0])),
+      Vec2D(2 * 1/raidus * real(estimated_normal[1]), 2 * 1/raidus * imag(estimated_normal[1])) };
      
       if (isnan(real(estimated_u)) || isnan(imag(estimated_u))) {
          continue;
       }
       walker += 1;
-      sum_11 += real(result[0]);
-      sum_12 += imag(result[0]);
-      sum_21 += real(result[1]);
-      sum_22 += imag(result[1]);
+      sum_11 += real(estimated_normal[0]);
+      sum_12 += imag(estimated_normal[0]);
+      sum_21 += real(estimated_normal[1]);
+      sum_22 += imag(estimated_normal[1]);
+      sum_x += real(estimated_u);
+      sum_y += imag(estimated_u);
    } 
 
+   displacementFile << real(x0) << "," << imag(x0) << ",";
+   displacementFile << sum_x/walker << "," << sum_y/walker << "\n";
    gradientFile << "X,Y,F11,F12,F21,F22\n";
    gradientFile << real(x0) << "," << imag(x0) << ",";
    gradientFile << sum_11/walker << "," << sum_12/walker << "," << sum_21/walker << "," << sum_22/walker << "\n";
@@ -426,15 +346,9 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    return {row1, row2};
 }
 
-// for simplicity, in this code we assume that the Dirichlet and Neumann
-// boundary polylines form a collection of closed polygons (possibly with holes),
-// and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet =    {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
+vector<Polyline> boundaryDirichlet =    {{ Vec2D(0, 0), Vec2D(0.2, 0), Vec2D(0.5, 0.5), Vec2D(0.8, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
 
-
-vector<Polyline> boundaryNeumann = {
-
-};
+vector<Polyline> boundaryNeumann = {};
 
 // these routines are not used by WoSt itself, but are rather used to check
 // whether a given evaluation point is actually inside the domain
@@ -460,45 +374,19 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
          return displaced;
       }
    }
-
-   // cerr << "v is not on the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    return nan;
 }
 
 Vec2D displacement(Vec2D v) { 
-   // vector<Polyline> boundaryDirichlet = {   {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
-   // vector<Polyline> displacedPoints = {
-   //    {
-   //       {Vec2D(0, -0.1), Vec2D(1, -0.2), Vec2D(1, 1.2), Vec2D(0, 1.1), Vec2D(0, -0.1)}
-   //    }
-   // }; 
-   //  vector<Polyline> displacedPoints = {
-   //    {
-   //       {Vec2D(-0.1, 0), Vec2D(1.2, 0), Vec2D(1.1, 1), Vec2D(-0.2, 1), Vec2D(-0.1, 0)}
-   //    }
-   // }; 
+   vector<Polyline> displacedPoints =  {{ Vec2D(-0.2, 0), Vec2D(0.2, 0), Vec2D(0.5, 0.5), Vec2D(0.8, 0), Vec2D(1.2, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
    
-   vector<Polyline> displacedPoints = {   {{ Vec2D(0, 0), Vec2D(1.4, -0.4), Vec2D(1.2, 1.4), Vec2D(0, 1), Vec2D(0, 0) }}};
-
-   // create vector polyline of displacement vectors from boundary points
-   // vector<Polyline> displacementVectors = {{{}}};
-   // for (int i = 0; i < boundaryDirichlet[0].size(); i++) {
-   //    Vec2D point = boundaryDirichlet[0][i];
-   //    Vec2D deformed_vec = displacedPoints[0][i];
-   //    Vec2D displacement_vec = deformed_vec - point;
-   //    displacementVectors[0].push_back(displacement_vec);
-   // }
-   
-
    Vec2D nan = numeric_limits<double>::quiet_NaN();
 
    Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, boundaryDirichlet, displacedPoints);
    if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
       return nan;
    }
-   // std::cout << " original point: " << real(v) << ", " << imag(v) << std::endl;
-   // std::cout << " interpolated displacement: " << real(interpolatedDisplacement) << ", " << imag(interpolatedDisplacement) << std::endl;
    return interpolatedDisplacement;
 }
 
@@ -691,147 +579,29 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_displace";
-   // // double size = 1; 
+   string shape = "gradient_estimate_notch_pure_dirichlet";
    double h = 0.01;
-   // // // string fileName = shape + "_size_" + double_to_str(size) + "_h_" + double_to_str(h);
    string fileName = shape; 
    auto deform = displacement;
 
    int s = 16; // make it smaller to speed up
-   // // auto start = high_resolution_clock::now(); // Added for timing
 
-   //  shape.csv
-   std::ofstream origFile("../output/" + shape + ".csv");
    std::ofstream gradientFile("../output/" + fileName + "deformation_gradient.csv");
-   std::ofstream neighbourFile("../output/" + shape + "_neighbour_displacements.csv");
    std::ofstream displacementFile("../output/" + shape + "_displacements.csv");
-   std::ofstream eigenvaluesFile2("../output/" + shape + "_eigenvalues2.csv");
-   std::ofstream eigenvaluesFile3("../output/" + shape + "_eigenvalues3.csv");
-   std::ofstream eigenvaluesFile("../output/" + shape + "_eigenvalues.csv");
-   std::ofstream eigenvectorFile("../output/" + shape + "_eigenvectors.csv");
 
    for( int j = 0; j < s; j++ )
    {
       cerr << "row " << j << " of " << s << endl;
       for( int i = 0; i < s; i++ )
       {
-         Vec2D x0(((double)i / (s - 1)),// * 2 * size - size,
-                  ((double)j / (s - 1))// * 2 * size - size 
+         Vec2D x0(((double)i / (s - 1)),
+                  ((double)j / (s - 1))
          );
          double x = real(x0);
          double y = imag(x0);
-         Vec2D left{ x - h/2, y };
-         Vec2D right{ x + h/2, y };
-         Vec2D top{ x, y + h/2 };
-         Vec2D bottom{ x, y - h/2 };
-         Vec2D solved_vec = NAN;
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann) && insideDomain(left, boundaryDirichlet, boundaryNeumann) && insideDomain(right, boundaryDirichlet, boundaryNeumann) && insideDomain(top, boundaryDirichlet, boundaryNeumann) && insideDomain(bottom, boundaryDirichlet, boundaryNeumann) ){
-            vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, gradientFile);
+         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann)){
+            vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, gradientFile, displacementFile);
          }
       } 
    }
-   // auto stop = high_resolution_clock::now(); // Added for timing
-   // auto duration = duration_cast<milliseconds>(stop - start); // Added for timing
-   // cout << "Time taken by function: " << duration.count() << " milliseconds" << endl; // Added for timing
-   // Vec2D solved = solve(Vec2D(0.1, 0.1), boundaryDirichlet, boundaryNeumann, deformFunc);
-   // vector<Vec2D> gradients = getDeformationGradientAndStress(Vec2D{0.1, 0.1}, 0.001, deformFunc, strainFile, neighbourFile, eigenvaluesFile, eigenvectorFile, eigenvaluesFile2, eigenvaluesFile3);
-   // cout << "dudx: " << real(gradients[0]) << " dudy: " << imag(gradients[0]) << " dvdx: " << real(gradients[1]) << " dvdy: " << imag(gradients[1]) << endl;
-   // cout << "Solved: (" << real(solved) << ", " << imag(solved) << ")" << endl;
-   // vector<Vec2D> gradients[30];
-   // vector<Vec2D> points;
-   // std::uniform_real_distribution<double> dist(0.01, 0.99);
-   // for (int i = 0; i < 30; ++i) {
-   //    double x, y;
-   //    do {
-   //       x = dist(gen);
-   //       y = dist(gen);
-   //    } while (x == y);
-   //    points.emplace_back(x, y);
-   // }
-   
-   // int sampleSize = 30;
-   // #pragma omp parallel for
-   // for (int i = 0; i < sampleSize; ++i) {
-   //     gradients[i] = getDeformationGradientAndStress(points[i], 0.1, deformFunc, strainFile, neighbourFile, eigenvaluesFile, eigenvectorFile, eigenvaluesFile2, eigenvaluesFile3);
-   //     cout << "Point: (" << real(points[i]) << ", " << imag(points[i]) << ") ";
-   //     cout << "dudx: " << real(gradients[i][0]) << " dudy: " << imag(gradients[i][0]) << " dvdx: " << real(gradients[i][1]) << " dvdy: " << imag(gradients[i][1]) << endl;
-   // }
-
-   // double sum_dudx = 0.0, sum_dudy = 0.0, sum_dvdx = 0.0, sum_dvdy = 0.0;
-   // for (int i = 0; i < sampleSize; ++i) {
-   //     sum_dudx += real(gradients[i][0]);
-   //     sum_dudy += imag(gradients[i][0]);
-   //     sum_dvdx += real(gradients[i][1]);
-   //     sum_dvdy += imag(gradients[i][1]);
-   // }
-
-   // double mean_dudx = sum_dudx / sampleSize;
-   // double mean_dudy = sum_dudy / sampleSize;
-   // double mean_dvdx = sum_dvdx / sampleSize;
-   // double mean_dvdy = sum_dvdy / sampleSize;
-
-   // double var_dudx = 0.0, var_dudy = 0.0, var_dvdx = 0.0, var_dvdy = 0.0;
-   // for (int i = 0; i < sampleSize; ++i) {
-   //     var_dudx += (real(gradients[i][0]) - mean_dudx) * (real(gradients[i][0]) - mean_dudx);
-   //     var_dudy += (imag(gradients[i][0]) - mean_dudy) * (imag(gradients[i][0]) - mean_dudy);
-   //     var_dvdx += (real(gradients[i][1]) - mean_dvdx) * (real(gradients[i][1]) - mean_dvdx);
-   //     var_dvdy += (imag(gradients[i][1]) - mean_dvdy) * (imag(gradients[i][1]) - mean_dvdy);
-   // }
-
-   // double stddev_dudx = sqrt(var_dudx / sampleSize);
-   // double stddev_dudy = sqrt(var_dudy / sampleSize);
-   // double stddev_dvdx = sqrt(var_dvdx / sampleSize);
-   // double stddev_dvdy = sqrt(var_dvdy / sampleSize);
-
-   // cout << "Mean dudx: " << mean_dudx << " dudy: " << mean_dudy << " dvdx: " << mean_dvdx << " dvdy: " << mean_dvdy << endl;
-   // cout << "Standard Deviation dudx: " << stddev_dudx << " dudy: " << stddev_dudy << " dvdx: " << stddev_dvdx << " dvdy: " << stddev_dvdy << endl;
-
-   // const int numRuns = 1000;
-   // vector<Vec2D> results;
-   // #pragma omp parallel for
-   // for (int i = 0; i < numRuns; ++i) {
-   //     Vec2D solved = solve(Vec2D(0.1, 0.1), boundaryDirichlet, boundaryNeumann, deformFunc);
-   //     results.push_back(solved);
-   // }
-
-   // double sumReal = 0.0, sumImag = 0.0;
-   // for (const auto& res : results) {
-   //     sumReal += real(res);
-   //     sumImag += imag(res);
-   // }
-
-   // double meanReal = sumReal / numRuns;
-   // double meanImag = sumImag / numRuns;
-
-   // double varianceReal = 0.0, varianceImag = 0.0;
-   // for (const auto& res : results) {
-   //     varianceReal += (real(res) - meanReal) * (real(res) - meanReal);
-   //     varianceImag += (imag(res) - meanImag) * (imag(res) - meanImag);
-   // }
-
-   // varianceReal /= numRuns;
-   // varianceImag /= numRuns;
-
-   // cout << "Mean: (" << meanReal << ", " << meanImag << ")" << endl;
-   // cout << "Variance: (" << varianceReal << ", " << varianceImag << ")" << endl;
-
-   // Calculate RMSE between estimation and (0.1, 0.1)
-   // double rmseReal = 0.0, rmseImag = 0.0;
-   // for (const auto& res : results) {
-   //     rmseReal += (real(res) - 0.1) * (real(res) - 0.1);
-   //     rmseImag += (imag(res) - 0.1) * (imag(res) - 0.1);
-   // }
-
-   // rmseReal = sqrt(rmseReal / numRuns);
-   // rmseImag = sqrt(rmseImag / numRuns);
-
-   // cout << "RMSE: (" << rmseReal << ", " << rmseImag << ")" << endl;
-   // vector<Vec2D> gradient = solveGradient(Vec2D(0.85, 0.85), boundaryDirichlet, boundaryNeumann, deformShear);
-   // vector<Vec2D> trans = transpose(gradient);
-   // vector<Vec2D> deformationGradient = { Vec2D{real(gradient[0]) + real(trans[0]), imag(gradient[0]) + imag(gradient[0])}, Vec2D{real(gradient[1]) + real(trans[1]), imag(gradient[1]) + imag(gradient[1])} };
-   // cout << "dudx: " << real(deformationGradient[0]) << " dudy: " << imag(deformationGradient[0]) << " dvdx: " << real(deformationGradient[1]) << " dvdy: " << imag(deformationGradient[1]) << endl;
-   // return 0;
-//    vector<Vec2D> gradients = getDeformationGradientAndStress(Vec2D{0.1, 0.1}, 0.01, deformShear, strainFile, neighbourFile, eigenvaluesFile, eigenvectorFile, eigenvaluesFile2, eigenvaluesFile3);
-//    cout << "dudx: " << real(gradients[0]) << " dudy: " << imag(gradients[0]) << " dvdx: " << real(gradients[1]) << " dvdy: " << imag(gradients[1]) << endl;
 }
