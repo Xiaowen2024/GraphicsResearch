@@ -1,5 +1,5 @@
 
-// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumann.cpp -o gradientEstimateNeumannTilted -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
+// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumann.cpp -o gradientEstimateNeumannSymm -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
 
 #include <algorithm>
 #include <array>
@@ -9,14 +9,14 @@
 #include <random>
 #include <vector>
 #include <fstream>
-#include <chrono> // Added for timing
+#include <chrono>
 using namespace std;
-using namespace std::chrono; // Added for timing
+using namespace std::chrono;
 
 #include <Eigen/Dense> 
 
-std::random_device rd;  // Non-deterministic random number generator
-std::mt19937 gen(rd()); // Mersenne Twister PRNG
+std::random_device rd; 
+std::mt19937 gen(rd());
 std::uniform_real_distribution<double> dist(-M_PI, M_PI);
 
 // the constant "infinity" is used as a maximum value in several calculations
@@ -66,20 +66,6 @@ Vec2D closestPoint( Vec2D x, Vec2D a, Vec2D b ) {
 bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
    return cross(b-a,x-a) * cross(c-b,x-b) < 0;
 }
-
-// // returns the time t at which the ray x+tv intersects segment ab,
-// // or infinity if there is no intersection
-// double rayIntersection( Vec2D x, Vec2D v, Vec2D a, Vec2D b ) {
-//    Vec2D u = b - a;
-//    Vec2D w = x - a;
-//    double d = cross(v,u);
-//    double s = cross(v,w) / d;
-//    double t = cross(u,w) / d;
-//    if (t > 0. && 0. <= s && s <= 1.) {
-//       return t;
-//    }
-//    return infinity;
-// }
 
 Vec2D deformShear( Vec2D v ) {
    double x = real(v);
@@ -141,8 +127,6 @@ Vec2D intersectPolylines(Vec2D x, Vec2D v, double r,
     return x + tMin * v;
 }
 
-
-
 // returns distance from x to closest point on the given polylines P
 pair<double, Vec2D> distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
@@ -175,31 +159,6 @@ double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    }
    return d;
 }
-
-// // finds the first intersection y of the ray x+tv with the given polylines P,
-// // restricted to a ball of radius r around x.  The flag onBoundary indicates
-// // whether the first hit is on a boundary segment (rather than the sphere), and
-// // if so sets n to the normal at the hit point.
-// Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
-//                          const vector<Polyline>& P,
-//                          Vec2D& n, bool& onBoundary ) {
-//    double tMin = r; // smallest hit time so far
-//    n = Vec2D{ 0.0, 0.0 }; // first hit normal
-//    onBoundary = false; // will be true only if the first hit is on a segment
-//    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
-//       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
-//          const double c = 1e-5; // ray offset (to avoid self-intersection)
-//          double t = rayIntersection( x + c*v, v, P[i][j], P[i][j+1] );
-//          if( t < tMin ) { // closest hit so far
-//             tMin = t;
-//             n = rotate90( P[i][j+1] - P[i][j] ); // get normal
-//             n /= length(n); // make normal unit length
-//             onBoundary = true;
-//          }
-//       }
-//    }
-//    return x + tMin*v; // first hit location
-// }
 
 Vec2D solve( Vec2D x0, // evaluation point
    vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
@@ -353,17 +312,8 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    return {row1, row2};
 }
 
-// for simplicity, in this code we assume that the Dirichlet and Neumann
-// boundary polylines form a collection of closed polygons (possibly with holes),
-// and are given with consistent counter-clockwise orientation
-vector<Polyline> boundaryDirichlet = {{ Vec2D(0.2, 0), Vec2D(0.4, 0), Vec2D(0.7, 0.5), Vec2D(1, 0), Vec2D(1.2, 0), Vec2D(1.2, 1), Vec2D(0.2, 1), Vec2D(0.2, 0) }};
-
-// vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 0.5), Vec2D(1, 1) }};
-vector<Polyline> boundaryNeumann = {};
- 
-// vector<Polyline> boundaryDirichlet =  {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1, 0) }};
-
-// vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 1)}};
+vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
+vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
 
 // these routines are not used by WoSt itself, but are rather used to check
 // whether a given evaluation point is actually inside the domain
@@ -390,14 +340,13 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
       }
    }
 
-   // cerr << "v is not on the boundary" << ", value: " << real(v) << " " << imag(v) << std::endl;
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    return nan;
 }
 
 Vec2D displacement(Vec2D v) { 
    
-   vector<Polyline> displacedPoints = {{ Vec2D(0, 0), Vec2D(0.4, 0), Vec2D(0.7, 0.5), Vec2D(1, 0), Vec2D(1.4, 0), Vec2D(1.2, 1), Vec2D(0.2, 1), Vec2D(0.2, 0) }};
+   vector<Polyline> displacedPoints =  {{ Vec2D(1.2, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.2, 0) }};
 
    Vec2D nan = numeric_limits<double>::quiet_NaN();
 
@@ -407,10 +356,6 @@ Vec2D displacement(Vec2D v) {
    }
    return interpolatedDisplacement;
 }
-
-// Returns true if the point x is contained in the region bounded by the Dirichlet
-// and Neumann curves.  We assume these curves form a collection of closed polygons,
-// and are given in a consistent counter-clockwise winding order.
 
 // if inside the polygon, the signed angle sum should be close to 2 * PI otherwise it should be close to 0
 bool insideDomain( Vec2D x,
@@ -529,7 +474,7 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_regular";
+   string shape = "gradient_estimate_notch_free_bottom";
    double h = 0.01;
    string fileName = shape; 
    auto deform = displacement;
