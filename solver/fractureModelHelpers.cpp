@@ -13,17 +13,24 @@ using Vec2D = complex<double>;
 using Polyline = vector<Vec2D>;
 
 // returns distance from x to closest point on the given polylines P
-double distancePolylines( Vec2D x, const vector<Polyline>& P ) {
+pair<double, Vec2D> distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
    // #pragma omp parallel for reduction(min:d)
+   Vec2D y;
    for( int i = 0; i < P.size(); i++ ) { // iterate over polylines
       for( int j = 0; j < P[i].size()-1; j++ ) { // iterate over segments
-         Vec2D y = closestPoint( x, P[i][j], P[i][j+1] ); // distance to segment
-         d = min( d, length(x-y) ); // update minimum distance
+         // distance to segment
+         Vec2D temp = closestPoint( x, P[i][j], P[i][j+1] );
+         if (d > length(x-temp)) {
+            y = closestPoint( x, P[i][j], P[i][j+1] );
+            d = min( d, length(x-y) ); // update minimum distance
+         }
+        
       }
    }
-   return d;
+   return make_pair(d, y);
 }
+
 
 // returns distance from x to closest silhouette point on the given polylines P
 double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
@@ -64,62 +71,6 @@ Vec2D intersectPolylines( Vec2D x, Vec2D v, double r,
    return x + tMin*v; // first hit location
 }
 
-// solves a Laplace equation Delta u = 0 at x0, where the Dirichlet and Neumann
-// boundaries are each given by a collection of polylines, the Neumann
-// boundary conditions are all zero, and the Dirichlet boundary conditions
-// are given by a function g that can be evaluated at any point in space
-Vec2D solve( Vec2D x0, // evaluation point
-              vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
-              vector<Polyline> boundaryNeumann, // reflecting part of the boundary
-              function<Vec2D(Vec2D)> g ) { // Dirichlet boundary values
-   const double eps = 0.0001; // stopping tolerance
-   const double rMin = 0.0001; // minimum step size
-   const int nWalks = 65536; // number of Monte Carlo samples
-   const int maxSteps = 65536; // maximum walk length
-   double sum_x = 0.0; // running sum of boundary contributions
-   double sum_y = 0.0;
-   int i = 0;
-   unsigned seed = 1;
-   srand(seed);
-  
-   // #pragma omp parallel for reduction(+:sum)
-   for( i = 0; i < nWalks; i++ ) {
-      Vec2D x = x0; // start walk at the evaluation point
-      Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
-      bool onBoundary = false; // flag whether x is on the interior or boundary
-
-      double r, dDirichlet, dSilhouette; // radii used to define star shaped region
-      int steps = 0;
-      do { 
-         // compute the radius of the largest star-shaped region
-         dDirichlet = distancePolylines( x, boundaryDirichlet );
-         dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
-         r = max( rMin, min( dDirichlet, dSilhouette ));
-
-         // intersect a ray with the star-shaped region boundary
-         double theta = random( -M_PI, M_PI );
-         if( onBoundary ) { // sample from a hemisphere around the normal
-            theta = theta/2. + angleOf(n);
-         }
-         Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
-         x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
-
-         steps++;
-      }
-      while(dDirichlet > eps && steps < maxSteps);
-      //stop if we hit the Dirichlet boundary, or the walk is too long
-
-      if( steps >= maxSteps ) cerr << "Hit max steps" << endl;
-
-
-      Vec2D eval_vec = g(x);
-      sum_x += real(eval_vec);
-      sum_y += imag(eval_vec);
-   }
-   return Vec2D(sum_x/nWalks, sum_y/nWalks);
-}
-
-
 // Returns true if the point x is contained in the region bounded by the Dirichlet
 // and Neumann curves.  We assume these curves form a collection of closed polygons,
 // and are given in a consistent counter-clockwise winding order.
@@ -135,46 +86,95 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
-vector<Vec2D> getDeformationGradientAndStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& neighbourFile, std::ofstream& stressFile, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann) {
-   double x = real(point);
-   double y = imag(point);
-   Vec2D nan = numeric_limits<double>::quiet_NaN();
-   Vec2D solved_vec = nan; 
-   if (!strainFile.is_open()) {
-      std::cerr << "Unable to open file: " << std::endl;
-      return vector<Vec2D>{solved_vec, solved_vec};
+vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
+   vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
+   vector<Polyline> boundaryNeumann, // reflecting part of the boundary
+   function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
+   const double eps = 0.000001; // stopping tolerance
+   const double rMin = 0.000001; // minimum step size
+   const int nWalks = 1000000 ;//100000000; // number of Monte Carlo samples
+   const int maxSteps = 65536; // maximum walk length
+   double sum_11 = 0.0; 
+   double sum_12 = 0.0;
+   double sum_21 = 0.0; 
+   double sum_22 = 0.0;
+   double sum_x = 0.0;
+   double sum_y = 0.0;
+   int i = 0;
+   int walker = 0;
+   int countX1 = 0;
+   int countY1 = 0;
+   int biggerX = 0;
+   int smallerX = 0;
+   int biggerY = 0;
+   int smallerY = 0;
+
+   #pragma omp parallel for reduction(+:sum)
+   double nextTheta = -1;
+   int count = 0;
+   Vec2D center;
+   for( i = 0; i < nWalks; i++ ) {
+   std::mt19937 generator(i);  
+   std::uniform_real_distribution<double> dist(-M_PI, M_PI);
+   Vec2D x = x0; 
+   Vec2D n{ 0.0, 0.0 }; 
+   bool onBoundary = false; 
+   double r, dDirichlet, dSilhouette; 
+   int steps = 0;
+   Vec2D closestPoint;
+   bool isStarting = true;
+   Vec2D normal = Vec2D(0, 0);
+   double raidus = 0;
+   do { 
+   center = x;
+   auto p = distancePolylines( x, boundaryDirichlet );
+   dDirichlet = p.first;
+   closestPoint = p.second;
+   dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
+   r = max( rMin, min( dDirichlet, dSilhouette ));
+
+   // intersect a ray with the star-shaped region boundary
+   double theta = random( -M_PI, M_PI );
+   if( onBoundary ) { // sample from a hemisphere around the normal
+   theta = theta/2. + angleOf(n);
    }
-   neighbourFile << "leftX, leftY, rightX, rightY, topX, topY, bottomX, bottomY\n";
-   Vec2D left{ x - h/2, y };
-   Vec2D right{ x + h/2, y };
-   Vec2D top{ x, y + h/2 };
-   Vec2D bottom{ x, y - h/2 };
-   vector<Vec2D> neighbors = {left, right, top, bottom};
-   vector<Vec2D> neighbors_deformed = {};
-   for ( int i = 0; i < 4; i++ ) {
-      if( insideDomain(neighbors[i], boundaryDirichlet, boundaryNeumann) ){
-         solved_vec = solve(neighbors[i], boundaryDirichlet, boundaryNeumann, deform);
-         neighbors_deformed.push_back(solved_vec);
-      }
-      else {
-         return vector<Vec2D>{nan, nan};
-      }
+   Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
+   x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
+   if (isStarting){
+   isStarting = false;
+   normal = v / length(v);
+   raidus = dDirichlet;
    }
-   neighbourFile << real(neighbors_deformed[0]) << "," << imag(neighbors_deformed[0]) << ",";
-   neighbourFile << real(neighbors_deformed[1]) << "," << imag(neighbors_deformed[1]) << ",";
-   neighbourFile << real(neighbors_deformed[2]) << "," << imag(neighbors_deformed[2]) << ",";
-   neighbourFile << real(neighbors_deformed[3]) << "," << imag(neighbors_deformed[3]) << "\n";
-   double dudx = (real(neighbors_deformed[1]) - real(neighbors_deformed[0])) / h;
-   double dudy = (real(neighbors_deformed[2]) - real(neighbors_deformed[3])) / h;
-   double dvdx = (imag(neighbors_deformed[1]) - imag(neighbors_deformed[0])) / h;
-   double dvdy = (imag(neighbors_deformed[2]) - imag(neighbors_deformed[3])) / h;
-   strainFile << "X,Y,F11,F12,F21,F22\n";
-   strainFile << x << "," << y << ",";
-   strainFile << dudx << "," << dudy << "," << dvdx << "," << dvdy << "\n";
-   vector<Vec2D> stress = getStress(1.0, 0.1, dudx + dvdy, dudx, dudy, dvdx, dvdy);
-   stressFile << "X,Y,Stress\n";
-   stressFile << x << "," << y << "," << real(stress[0]) << imag(stress[0]) << real(stress[1]) << imag(stress[1]) << "\n";
-   return stress;
+   steps++;
+   }
+   while(dDirichlet > eps && steps < maxSteps);
+
+   if( steps >= maxSteps ) continue;
+   Vec2D estimated_u = g(closestPoint);
+   vector<Vec2D> estimated_normal = multiply(estimated_u, normal);
+   estimated_normal = { Vec2D(2 * 1/raidus * real(estimated_normal[0]), 2 * 1/raidus * imag(estimated_normal[0])),
+   Vec2D(2 * 1/raidus * real(estimated_normal[1]), 2 * 1/raidus * imag(estimated_normal[1])) };
+
+   if (isnan(real(estimated_u)) || isnan(imag(estimated_u))) {
+   continue;
+   }
+   walker += 1;
+   sum_11 += real(estimated_normal[0]);
+   sum_12 += imag(estimated_normal[0]);
+   sum_21 += real(estimated_normal[1]);
+   sum_22 += imag(estimated_normal[1]);
+   sum_x += real(estimated_u);
+   sum_y += imag(estimated_u);
+   } 
+
+   displacementFile << real(x0) << "," << imag(x0) << ",";
+   displacementFile << sum_x /walker  << "," << sum_y/walker << "\n";
+   gradientFile << "X,Y,F11,F12,F21,F22\n";
+   gradientFile << real(x0) << "," << imag(x0) << ",";
+   gradientFile << sum_11/walker << "," << sum_12/walker << "," << sum_21/walker << "," << sum_22/walker << "\n";
+   Vec2D row1 = Vec2D(sum_11/walker, sum_12/walker);
+   Vec2D row2 = Vec2D(sum_21/walker, sum_22/walker);
+   return {row1, row2};
 }
 
 

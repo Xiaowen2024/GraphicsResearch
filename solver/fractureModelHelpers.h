@@ -19,6 +19,15 @@ inline double random(double rMin, double rMax) {
     double u = rRandMax * (double)rand();
     return u * (rMax - rMin) + rMin;
 }
+vector<Vec2D> multiply(Vec2D A, Vec2D B) {
+    vector<Vec2D> result;
+    Vec2D row1 = {real(A) * real(B), real(A) * imag(B)};
+    Vec2D row2 = {imag(A) * real(B), imag(A) * imag(B)};
+    result.push_back(row1);
+    result.push_back(row2);
+    return result;
+}
+
 
 // use std::complex to implement 2D vectors
 using Vec2D = complex<double>;
@@ -98,6 +107,14 @@ inline vector<Vec2D> getSymmetricMatrix(Vec2D v) {
     }
 }
 
+inline vector<Vec2D> getTransposeMatrix(vector<Vec2D> matrix) {
+    vector<Vec2D> result;
+    result.push_back(Vec2D(real(matrix[0]), real(matrix[1])));
+    result.push_back(Vec2D(imag(matrix[0]), imag(matrix[1])));
+    return result;
+}
+
+
 inline vector<Vec2D> getStress(double lam, double mu, double trace, double dudx, double dudy, double dvdx, double dvdy) {
     return matrixAdd(vector<Vec2D>{Vec2D{1 * lam * trace, 0}, Vec2D{0, 1 * lam * trace}}, vector<Vec2D>{Vec2D{2 * mu * dudx, 2 * mu * dudy}, Vec2D{2 * mu * dvdx, 2 * mu * dvdy}});
 }
@@ -109,7 +126,7 @@ vector<Polyline> newBoundaryDirichlet = {
     }
 };
 
-double distancePolylines(Vec2D x, const vector<Polyline>& P);
+pair<double, Vec2D> distancePolylines(Vec2D x, const vector<Polyline>& P);
 
 double silhouetteDistancePolylines(Vec2D x, const vector<Polyline>& P);
 
