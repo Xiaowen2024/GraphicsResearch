@@ -70,9 +70,8 @@ bool isSilhouette( Vec2D x, Vec2D a, Vec2D b, Vec2D c ) {
 
 using Polyline = vector<Vec2D>;
 
-vector<Polyline> boundaryDirichlet =  {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1, 0)}};
-
-vector<Polyline> boundaryNeumann = {{ Vec2D(1, 0), Vec2D(1, 0.5), Vec2D(1, 1) }};
+vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
+vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
 
 
 double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
@@ -254,7 +253,7 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
               function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
    const double eps = 0.000001; // stopping tolerance
    const double rMin = 0.000001; // minimum step size
-   const int nWalks = 10000000; // number of Monte Carlo samples
+   const int nWalks = 100000; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
    double sum_11 = 0.0; 
    double sum_12 = 0.0;
@@ -383,8 +382,7 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
 }
 
 Vec2D displacement(Vec2D v) { 
-   // vector<Polyline> displacedPoints = {   {{ Vec2D(-0.2, 0), Vec2D(1.4, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }}};
-   vector<Polyline> displacedPoints = {{ Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(1.4, 0)}};
+   vector<Polyline> displacedPoints =  {{ Vec2D(1.2, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.2, 0) }};
 
    Vec2D nan = numeric_limits<double>::quiet_NaN();
 
@@ -548,10 +546,10 @@ string double_to_str(double f) {
 
 
 int main( int argc, char** argv ) {
-   string fileName = "gradient_estimate_free_boundary_rect_fast_finite_difference";
+   string fileName = "gradient_estimate_free_boundary_notch_free_bottom_single";
    auto deform = displacement;
    std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
    std::ofstream displacementFile("../output/" + fileName + "_displacementF.csv");
-   vector<Vec2D> gradient = solveGradient(Vec2D(0.9, 0.5), boundaryDirichlet, boundaryNeumann, displacement, displacementFile, gradientFile);
+   vector<Vec2D> gradient = solveGradient(Vec2D(0.5, 0.2), boundaryDirichlet, boundaryNeumann, displacement, displacementFile, gradientFile);
    cout << "Solved: (" << real(gradient[0]) << ", " << imag(gradient[0]) << ", " << real(gradient[1]) << ", " << imag(gradient[1]) << ")" << endl;
 }

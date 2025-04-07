@@ -286,18 +286,18 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
 
       if( steps >= maxSteps ) continue;
       Vec2D estimated_u = g(closestPoint);
-      vector<Vec2D> estimated_normal = multiply(estimated_u, normal);
-      estimated_normal = { Vec2D(2 * 1/raidus * real(estimated_normal[0]), 2 * 1/raidus * imag(estimated_normal[0])),
-      Vec2D(2 * 1/raidus * real(estimated_normal[1]), 2 * 1/raidus * imag(estimated_normal[1])) };
+      vector<Vec2D> estimated_gradient = multiply(estimated_u, normal);
+      estimated_gradient = { Vec2D(2 * 1/raidus * real(estimated_gradient[0]), 2 * 1/raidus * imag(estimated_gradient[0])),
+      Vec2D(2 * 1/raidus * real(estimated_gradient[1]), 2 * 1/raidus * imag(estimated_gradient[1])) };
      
       if (isnan(real(estimated_u)) || isnan(imag(estimated_u))) {
          continue;
       }
       walker += 1;
-      sum_11 += real(estimated_normal[0]);
-      sum_12 += imag(estimated_normal[0]);
-      sum_21 += real(estimated_normal[1]);
-      sum_22 += imag(estimated_normal[1]);
+      sum_11 += real(estimated_gradient[0]);
+      sum_12 += imag(estimated_gradient[0]);
+      sum_21 += real(estimated_gradient[1]);
+      sum_22 += imag(estimated_gradient[1]);
       sum_x += real(estimated_u);
       sum_y += imag(estimated_u);
    } 

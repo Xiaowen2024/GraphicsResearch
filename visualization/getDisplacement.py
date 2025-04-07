@@ -14,8 +14,7 @@ def get_original_points():
     return np.array([]), np.array([])
 
 # Input and output file paths
-input_file = '../output/gradient_estimate_notch_pure_dirichlet_displacements.csv'
-
+input_file = '../output/gradient_estimate_notch_free_bottom_displacement.csv'
 
 # Deformed points (Ux, Uy)
 data = np.loadtxt(input_file, delimiter=',', skiprows=1)
@@ -44,6 +43,7 @@ fig.update_layout(scene=dict(
     xaxis_title='X',
     yaxis_title='Y',
     zaxis_title='Z',
+    xaxis=dict(range=[-0.3, 1.2]),
     zaxis=dict(range=[-0.01, 0.01]),
     aspectmode='cube'
 ))
