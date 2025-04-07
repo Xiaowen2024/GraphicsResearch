@@ -11,6 +11,9 @@ using namespace std;
 #ifndef FRACTURE_MODEL_LIB_H
 #define FRACTURE_MODEL_LIB_H
 
+using Vec2D = complex<double>;
+using Polyline = vector<Vec2D>;
+
 const double infinity = numeric_limits<double>::infinity();
 
 // returns a random value in the range [rMin,rMax]
@@ -39,6 +42,7 @@ inline double cross(Vec2D u, Vec2D v) { return real(u) * imag(v) - imag(u) * rea
 inline vector<Vec2D> outerProduct(Vec2D u, Vec2D v) {
     return vector<Vec2D>({Vec2D(real(u) * real(v), real(u) * imag(v)), Vec2D(imag(u) * real(v), imag(u) * imag(v))});
 }
+
 inline vector<Vec2D> matrixAdd(vector<Vec2D> A, vector<Vec2D> B) {
     vector<Vec2D> result;
     result.reserve(A.size());
@@ -65,6 +69,12 @@ inline vector<Vec2D> matrixMultiply(vector<Vec2D> A, vector<Vec2D> B) {
 }
 inline Vec2D matrixVectorMultiply(vector<Vec2D> A, Vec2D v) {
     return Vec2D(dot(A[0], v), dot(A[1], v));
+}
+
+inline vector<Vec2D> vectorMatrixMultiply(Vec2D A, vector<Vec2D> B) {
+    vector<Vec2D> result;
+    result.push_back(Vec2D(dot(A, Vec2D(real(B[0]), real(B[1]))), dot(A, Vec2D(imag(B[0]), imag(B[1])))));
+    return result;
 }
 
 inline vector<Vec2D> scalarMultiplyMatrix(double scalar, vector<Vec2D> matrix) {

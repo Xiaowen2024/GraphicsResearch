@@ -9,9 +9,6 @@
 #include "fractureModelHelpers.h"
 using namespace std;
 
-using Vec2D = complex<double>;
-using Polyline = vector<Vec2D>;
-
 // returns distance from x to closest point on the given polylines P
 pair<double, Vec2D> distancePolylines( Vec2D x, const vector<Polyline>& P ) {
    double d = infinity; // minimum distance so far
@@ -86,13 +83,74 @@ bool insideDomain( Vec2D x,
    return abs(Theta-2.*M_PI) < delta; // boundary winds around x exactly once
 }
 
+Vec2D solve( Vec2D x0, // evaluation point
+   vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
+   vector<Polyline> boundaryNeumann, // reflecting part of the boundary
+   function<Vec2D(Vec2D)> g ) { // Dirichlet boundary values
+      const double eps = 0.000001; // stopping tolerance
+      const double rMin = 0.000001; // minimum step size
+      const int nWalks = 1000000; // number of Monte Carlo samples
+      const int maxSteps = 65536; // maximum walk length
+      double sum_x = 0.0; // running sum of boundary contributions
+      double sum_y = 0.0;
+      int i = 0;
+      int walker = 0;
+      int countX1 = 0;
+      int countY1 = 0;
+      int biggerX = 0;
+      int smallerX = 0;
+      int biggerY = 0;
+      int smallerY = 0;
+      
+      #pragma omp parallel for reduction(+:sum)
+      double nextTheta = -1;
+      bool isStarting = true;
+      for( i = 0; i < nWalks; i++ ) {
+         std::mt19937 generator(i);  
+         std::uniform_real_distribution<double> dist(-M_PI, M_PI);
+         Vec2D x = x0; // start walk at the evaluation point
+         Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
+         bool onBoundary = false; // flag whether x is on the interior or boundary
+         double r, dDirichlet, dSilhouette; // radii used to define star shaped region
+         int steps = 0;
+         Vec2D closestPoint;
+         do { 
+         auto p = distancePolylines( x, boundaryDirichlet );
+         dDirichlet = p.first;
+         closestPoint = p.second;
+         dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
+         r = max( rMin, min( dDirichlet, dSilhouette ));
+         double theta = random( -M_PI, M_PI );
+         if( onBoundary ) { // sample from a hemisphere around the normal
+            theta = theta/2. + angleOf(n);
+         }
+         Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
+         x =  intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
+         steps++;
+         }
+         while(dDirichlet > eps && steps < maxSteps);
+
+         Vec2D eval_vec = g(x);
+
+         if (isnan(real(eval_vec)) || isnan(imag(eval_vec))) {
+            continue;
+         }
+         walker += 1;
+         sum_x += real(eval_vec);
+         sum_y += imag(eval_vec);
+      } 
+      return Vec2D(sum_x/walker, sum_y/walker);
+}
+
 vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
    vector<Polyline> boundaryNeumann, // reflecting part of the boundary
-   function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
+   function<Vec2D(Vec2D)> g = [](Vec2D) { return Vec2D(0.0, 0.0); }, 
+   std::ofstream& displacementFile = *(new std::ofstream()), 
+   std::ofstream& gradientFile = *(new std::ofstream())) { // Dirichlet boundary values
    const double eps = 0.000001; // stopping tolerance
    const double rMin = 0.000001; // minimum step size
-   const int nWalks = 1000000 ;//100000000; // number of Monte Carlo samples
+   const int nWalks = 100000;//100000000; // number of Monte Carlo samples
    const int maxSteps = 65536; // maximum walk length
    double sum_11 = 0.0; 
    double sum_12 = 0.0;
@@ -177,7 +235,6 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    return {row1, row2};
 }
 
-
 vector<Vec2D> returnStress( Vec2D point, double h, function<Vec2D(Vec2D)> deform, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann) {
    double x = real(point);
    double y = imag(point);
@@ -240,8 +297,11 @@ Vec2D getDirectHomogenousForce(vector<Vec2D> stressComponent, Vec2D normal) {
    return matrixVectorMultiply(stressComponent, normal);
 }
 
-float getNormalStress(vector<Vec2D> stressTensor, Vec2D normal){
-   return real(normal) * real(normal) * real(stressTensor[0]) + imag(normal) * imag(normal) * imag(stressTensor[1]) + 2 * real(normal) * imag(normal) * imag(stressTensor[0]);
+double getNormalStress(vector<Vec2D> stressTensor, Vec2D normal){
+   double normalStress = 0;
+   vector<Vec2D> inter = vectorMatrixMultiply(normal, stressTensor);
+   normalStress = real(inter[0]) * real(normal) + imag(inter[0]) * imag(normal);
+   return normalStress;
 }
 
 vector<Vec2D> getSeparationTensor(Vec2D tensileForce, Vec2D compressiveForce, vector<Vec2D> neighbourTensileForces, vector<Vec2D> neighbourCompressiveForces) {
