@@ -312,8 +312,11 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    return {row1, row2};
 }
 
-vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
-vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
+// vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
+// vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
+vector<Polyline> boundaryDirichlet = {{ Vec2D(0, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
+vector<Polyline> boundaryNeumann = { {Vec2D(0.45, 0.4), Vec2D(0.55, 0.4), Vec2D(0.5, 0.6)} };
+vector<Polyline> displacedPoints =  {{ Vec2D(-0.1, 0), Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0)}};
 
 // these routines are not used by WoSt itself, but are rather used to check
 // whether a given evaluation point is actually inside the domain
@@ -346,7 +349,7 @@ Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, 
 
 Vec2D displacement(Vec2D v) { 
    
-   vector<Polyline> displacedPoints =  {{ Vec2D(1.2, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.2, 0) }};
+   // vector<Polyline> displacedPoints =  {{ Vec2D(1.2, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.2, 0) }};
 
    Vec2D nan = numeric_limits<double>::quiet_NaN();
 
@@ -474,8 +477,7 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_free_bottom";
-   double h = 0.01;
+   string shape = "gradient_estimate_center_crack";
    string fileName = shape; 
    auto deform = displacement;
 
@@ -494,6 +496,7 @@ int main( int argc, char** argv ) {
          double x = real(x0);
          double y = imag(x0);
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann)){
+            cout << "x0: " << x0 << " inside domain" << endl;
             vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
          }
       } 
