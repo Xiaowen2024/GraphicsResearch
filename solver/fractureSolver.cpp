@@ -21,9 +21,13 @@ using namespace std::chrono;
 const int WIDTH = 6;
 const int HEIGHT = 4;
 
-vector<Polyline> boundaryDirichlet = {{ Vec2D(0, 1), Vec2D(0, 0), Vec2D(0, 1) }, { Vec2D(1, 0), Vec2D(1, 1), Vec2D(1, 0) }};
-vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(1, 0), Vec2D(0, 0)}, {Vec2D(1, 1), Vec2D(0, 1), Vec2D(1, 1)} };
-vector<Polyline> displacedPoints =  {{ Vec2D(-0.1, 0), Vec2D(-0.1, 1), Vec2D(-0.1, 0)} , {Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(1.1, 0)}};
+vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
+vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
+vector<Polyline> displacedPoints =  {{ Vec2D(1.05, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.05, 0) }};
+
+// vector<Polyline> boundaryDirichlet = {{Vec2D(0, 0), Vec2D(1, 0)} , {Vec2D(1, 1), Vec2D(0, 1)}};
+// vector<Polyline> boundaryNeumann = {{Vec2D(1, 0), Vec2D(1, 1)}, {Vec2D(0, 1), Vec2D(0, 0)}, {Vec2D(0.45, 0.4), Vec2D(0.55, 0.4), Vec2D(0.5, 0.5), Vec2D(0.45, 0.4)}};
+// vector<Polyline> displacedPoints = {{Vec2D(-0.1, 0), Vec2D(1.1, 0)} , {Vec2D(1.1, 1), Vec2D(-0.1, 1)}};
 
 Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
     for (int i = 0; i < originalPoints[0].size() - 1; i++) {
@@ -112,11 +116,36 @@ double calculateCriticalLengthForNotch(double crackLength, double planeWidth, ve
     return (KIC / denominator) * (KIC / denominator);
 }
 
+// below are all under the assumption of plane strain
+double calculateK1(double shearModulus, double poissonRatio, double distance, double displacement) {
+    return shearModulus * sqrt( 2 * M_PI ) * displacement / ( sqrt(distance) * (2 - 2 * poissonRatio));
+}
+
+double calculateK2(double shearModulus, double poissonRatio, double distance, double displacement) {
+    return shearModulus * sqrt( 2 * M_PI ) * displacement / ( sqrt(distance) * (2 - 2 * poissonRatio));
+}
+
+double calculateK3(double shearModulus, double poissonRatio, double distance, double displacement) {
+    return shearModulus * sqrt( M_PI ) * displacement / ( sqrt(2 * distance) ) ;
+}
+
+double calculateEffectiveSIF (double K1, double K2, double K3, double poissonRatio) {
+    return sqrt( K1 * K1 + K2 * K2 + K3 * K3 / ( 1 - poissonRatio) );
+} 
+
+double calculateCrackPropagationRate(double rayleighWaveSpeed, double KIC, double Keff) {
+    return Keff > KIC ? rayleighWaveSpeed * ((1- KIC * KIC) / (Keff * Keff)) : 0;
+} 
+
+Vec2D determineCrackPropagationDirection(double K1, double K2, double K3, double poissonRatio) {
+    double K4 = K1 * K1 + K3 * K3 / ( 1 - poissonRatio);
+    return 2 * atan( (K4 - sqrt( K4 * K4 + 8 *  K2 * K2)) / ( 4 * K2)); 
+}
+
 // assume we have constant force during a single cycle of loading 
 // the result is da/dN where N is the number of cycles 
-// TODO: modify the formula according to static loading 
 // for now assume each cycle is 1 second 
-pair<Vec2D, double> calculateCrackGrowthDirectionAndRate(vector<Vec2D> stressTensor, double materialConstant, double parisExponent, double SIF) {
+pair<Vec2D, double> calculateCrackGrowthDirectionAndRateForCrackInitiation(vector<Vec2D> stressTensor, double materialConstant, double parisExponent, double SIF) {
     Vec2D growthDirection = determineCrackPropagationDirection(stressTensor);
     // calculate the growth rate according to Paris's law 
     double rate = materialConstant * pow(SIF, parisExponent);
@@ -185,7 +214,7 @@ void growCrackTip(Vec2D crackTip, double crackLength, double planeWidth, Vec2D n
     double criticalLength = calculateCriticalLength(crackLength, planeWidth, stressTensor, normal, KIC);
     cout << "Critical Length: " << criticalLength << endl;
     if (crackLength < criticalLength && SIF < KIC){ // TODO: change back to while loop
-        pair<Vec2D, double> growthInfo = calculateCrackGrowthDirectionAndRate(stressTensor, materialConstant, pairsExponent, SIF);
+        pair<Vec2D, double> growthInfo = calculateCrackGrowthDirectionAndRateForCrackInitiation(stressTensor, materialConstant, pairsExponent, SIF);
         // TODO: this error checking is not correct
         // if (dot(normal, growthInfo.first) * growthInfo.second <= 0){
         //     cout << "crack growth direction is not valid" << endl;
@@ -261,57 +290,57 @@ pair<Vec2D, double> initializeCrackTip(function<Vec2D(Vec2D)> deform, vector<Pol
     double maxStress = 0.0;
     double h = 1e-5;
 
-    // for (const auto& polyline : boundaryDirichlet) {
-    //     for (size_t i = 0; i < polyline.size() - 1; ++i) {
-    //         Vec2D startPoint = polyline[i];
-    //         Vec2D endPoint = polyline[i + 1];
-    //         Vec2D direction = (endPoint - startPoint) / length(endPoint - startPoint);
-    //         double segmentLength = length(endPoint - startPoint);
+    for (const auto& polyline : boundaryDirichlet) {
+        for (size_t i = 0; i < polyline.size() - 1; ++i) {
+            Vec2D startPoint = polyline[i];
+            Vec2D endPoint = polyline[i + 1];
+            Vec2D direction = (endPoint - startPoint) / length(endPoint - startPoint);
+            double segmentLength = length(endPoint - startPoint);
 
-    //         for (double t = stepSize; t < segmentLength; t += stepSize) {
-    //             Vec2D point = startPoint + direction * t;
-    //             Vec2D pointLeft = point + Vec2D{-h, -imag(direction) * h};
-    //             Vec2D pointRight = point + Vec2D{h, imag(direction) * h};
-    //             Vec2D pointTop = point + Vec2D{real(direction) * h, h};
-    //             Vec2D pointBottom = point + Vec2D{-real(direction) * h, -h};
-    //             vector<Vec2D> neighbors = {pointLeft, pointRight, pointTop, pointBottom};
-    //             vector<Vec2D> neighborsDeformed;
-    //             for (const auto& neighbor : neighbors) {
-    //                 Vec2D interpolatedPoint = interpolateVec2DBoundaryPoints(neighbor, boundaryDirichlet, displacedPoints);
-    //                 if (isnan(real(interpolatedPoint)) || isnan(imag(interpolatedPoint))) {
-    //                     // std::cerr << "Error: Point is not on the boundary." << std::endl;
-    //                     continue;
-    //                 }
-    //                 neighborsDeformed.push_back(interpolatedPoint);
-    //             } 
-    //             if (neighborsDeformed.size() != 4) {
-    //                 // std::cerr << "Error: Not enough deformed neighbors." << std::endl;
-    //                 continue;
-    //             }
-    //             double dudx = (real(neighborsDeformed[1]) - real(neighborsDeformed[0])) / (2 * h);
-    //             double dudy = (real(neighborsDeformed[2]) - real(neighborsDeformed[3])) / (2 * h);
-    //             double dvdx = (imag(neighborsDeformed[1]) - imag(neighborsDeformed[0])) / (2 * h);
-    //             double dvdy = (imag(neighborsDeformed[2]) - imag(neighborsDeformed[3])) / (2 * h);
+            for (double t = stepSize; t < segmentLength; t += stepSize) {
+                Vec2D point = startPoint + direction * t;
+                Vec2D pointLeft = point + Vec2D{-h, -imag(direction) * h};
+                Vec2D pointRight = point + Vec2D{h, imag(direction) * h};
+                Vec2D pointTop = point + Vec2D{real(direction) * h, h};
+                Vec2D pointBottom = point + Vec2D{-real(direction) * h, -h};
+                vector<Vec2D> neighbors = {pointLeft, pointRight, pointTop, pointBottom};
+                vector<Vec2D> neighborsDeformed;
+                for (const auto& neighbor : neighbors) {
+                    Vec2D interpolatedPoint = interpolateVec2DBoundaryPoints(neighbor, boundaryDirichlet, displacedPoints);
+                    if (isnan(real(interpolatedPoint)) || isnan(imag(interpolatedPoint))) {
+                        // std::cerr << "Error: Point is not on the boundary." << std::endl;
+                        continue;
+                    }
+                    neighborsDeformed.push_back(interpolatedPoint);
+                } 
+                if (neighborsDeformed.size() != 4) {
+                    // std::cerr << "Error: Not enough deformed neighbors." << std::endl;
+                    continue;
+                } 
+                double dudx = (real(neighborsDeformed[1]) - real(neighborsDeformed[0])) / (2 * h);
+                double dudy = (real(neighborsDeformed[2]) - real(neighborsDeformed[3])) / (2 * h);
+                double dvdx = (imag(neighborsDeformed[1]) - imag(neighborsDeformed[0])) / (2 * h);
+                double dvdy = (imag(neighborsDeformed[2]) - imag(neighborsDeformed[3])) / (2 * h);
 
-    //             vector<Vec2D> displacementGradient = {Vec2D(dudx, dudy), Vec2D(dvdx, dvdy)};
-    //             displacementGradient[0] -= Vec2D(1, 0);
-    //             displacementGradient[1] -= Vec2D(0, 1);
-    //             // cout << "displacementGradient: " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << endl;
-    //             // cout << "displacementGradient: " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << endl;
-    //             vector<Vec2D> strain = calculateStrain(displacementGradient);
-    //             // cout << "strain: " << real(strain[0]) << ", " << imag(strain[0]) << endl;
-    //             // cout << "strain: " << real(strain[1]) << ", " << imag(strain[1]) << endl;
-    //             vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
-    //             auto stressDecomposed = eigenDecomposition(stressTensor);
-    //             double stressMagnitude = abs(stressDecomposed[0].first);
-    //             if (stressMagnitude > maxStress) {
-    //                 maxStress = stressMagnitude;
-    //                 crackTip = point;
-    //                 stepSize = max(stepSize / 2, 0.01); 
-    //             }
-    //         }
-    //     }
-    // }
+                vector<Vec2D> displacementGradient = {Vec2D(dudx, dudy), Vec2D(dvdx, dvdy)};
+                displacementGradient[0] -= Vec2D(1, 0);
+                displacementGradient[1] -= Vec2D(0, 1);
+                // cout << "displacementGradient: " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << endl;
+                // cout << "displacementGradient: " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << endl;
+                vector<Vec2D> strain = calculateStrain(displacementGradient);
+                // cout << "strain: " << real(strain[0]) << ", " << imag(strain[0]) << endl;
+                // cout << "strain: " << real(strain[1]) << ", " << imag(strain[1]) << endl;
+                vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
+                auto stressDecomposed = eigenDecomposition(stressTensor);
+                double stressMagnitude = abs(stressDecomposed[0].first);
+                if (stressMagnitude > maxStress) {
+                    maxStress = stressMagnitude;
+                    crackTip = point;
+                    stepSize = max(stepSize / 2, 0.01); 
+                }
+            }
+        }
+    }
 
     stepSize = 0.1;
 
@@ -378,9 +407,9 @@ int main( int argc, char** argv ) {
     auto result = initializeCrackTip(displacement, boundaryDirichlet, boundaryNeumann, 200, 70, 90);
     cout << "Crack tip: " << real(result.first) << ", " << imag(result.first) << endl;
     cout << "Max stress: " << result.second << endl;
-    double crackLength = 0.01; //estimateCrackLength(0.7, result.second);
-    cout << "Estimated crack length: " << crackLength << endl;
-    growCrackTip(result.first, crackLength, 1.0, Vec2D(0, -1), 3, 1e-10, 3, 70, 90, 1e-5, displacement, boundaryDirichlet, boundaryNeumann);
+    // double crackLength = 0.01; //estimateCrackLength(0.7, result.second);
+    // cout << "Estimated crack length: " << crackLength << endl;
+    // growCrackTip(result.first, crackLength, 1.0, Vec2D(0, -1), 3, 1e-10, 3, 70, 90, 1e-5, displacement, boundaryDirichlet, boundaryNeumann);
     // auto gradient = solveGradient(Vec2D(0.369611, 0.225), boundaryDirichlet, boundaryNeumann, displacement);
     // gradient[0] -= Vec2D(1, 0);
     // gradient[1] -= Vec2D(0, 1);
