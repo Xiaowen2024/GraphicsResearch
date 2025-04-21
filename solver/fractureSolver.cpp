@@ -129,7 +129,10 @@ double calculateK3(double shearModulus, double poissonRatio, double distance, do
     return shearModulus * sqrt( M_PI ) * displacement / ( sqrt(2 * distance) ) ;
 }
 
-double calculateEffectiveSIF (double K1, double K2, double K3, double poissonRatio) {
+double calculateEffectiveSIF (double shearModulus, double poissonRatio, double distance, double displacement1, double displacement2, double displacement3) {
+    double K1 = calculateK1(shearModulus, poissonRatio, distance, displacement1);
+    double K2 = calculateK2(shearModulus, poissonRatio, distance, displacement2);
+    double K3 = calculateK3(shearModulus, poissonRatio, distance, displacement3);
     return sqrt( K1 * K1 + K2 * K2 + K3 * K3 / ( 1 - poissonRatio) );
 } 
 
@@ -167,6 +170,8 @@ vector<Vec2D> calculateStrain(vector<Vec2D> displacementGradient){
     return strain;
 }
 
+
+
 // using Griffth's energy release rate formula, we can get a lower bound for the length of the crack
 double estimateCrackLength(double KIC, double stress){
     double denominator = M_PI * stress * stress;
@@ -176,73 +181,31 @@ double estimateCrackLength(double KIC, double stress){
     return KIC * KIC / denominator;
 }
 
-vector<Vec2D> growHelper(Vec2D crackTip, double h, function<Vec2D(Vec2D)> deform, std::ofstream& strainFile, std::ofstream& displacementFile, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double lam, double mu){
-    if( insideDomain(crackTip, boundaryDirichlet, boundaryNeumann) ){
-        std::cout << "crackTip: " << real(crackTip) << ", " << imag(crackTip) << " inside domain" << std::endl;
-        vector<Vec2D> displacementGradient = solveGradient(crackTip, boundaryDirichlet, boundaryNeumann, deform, strainFile, displacementFile);
-        vector<Vec2D> strain = calculateStrain(displacementGradient);
-        vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
-        return stressTensor;
-    }
-    return {};
-}
-
+vector<double> getCrackOpeningDisplacement(Vec2D crackTip, Vec2D pointN1, Vec2D pointN2) {
+    double displacement1 = abs(real(pointN1) - real(pointN2));
+    double displacement2 = abs(imag(pointN1) - imag(pointN2));
+    double displacement3 = 0;
+    return {displacement1, displacement2, displacement3};
+}  
 // assume the crack plane is on the x axis, the normal will therefore be (0, 1)
 // asume crackStarting point is at (0, 0), crack tip is (0, 1), crack direction is (0, 1)
-void growCrackTip(Vec2D crackTip, double crackLength, double planeWidth, Vec2D normal, double KIC, double materialConstant, double pairsExponent, double lam, double mu, double h, function<Vec2D(Vec2D)> deform, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann){
+void growCrackTip(Vec2D crackTip, Vec2D crackLength, Vec2D point, double displacement1, double displacement2, double displacement3, Vec2D normal, double shearModulus, double poissonRatio, double rayleighWaveSpeed, double KIC, function<Vec2D(Vec2D)> deform, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann){
     string shape = "crackGrowthExperiment1";
     std::ofstream strainFile("../output/" + shape + "_strain.csv");
     std::ofstream stressFile("../output/" + shape + "_stress.csv");
     std::ofstream displacementFile("../output/" + shape + "_displacement.csv");
-    vector<Vec2D> stressTensor = growHelper(crackTip, h, deform, strainFile, displacementFile, boundaryDirichlet, boundaryNeumann, lam, mu); 
-    // cout << "first stress tensor after initiation: " << real(stressTensor[0]) << ", " << imag(stressTensor[0]) << endl;
-    // cout << real(stressTensor[1]) << ", " << imag(stressTensor[1]) << endl;
-    if (!isnan(real(stressTensor[0])) && !isnan(imag(stressTensor[0])) &&
-        !isnan(real(stressTensor[1])) && !isnan(imag(stressTensor[1]))) {
-        // cout << "stress tensor: " << real(stressTensor[0]) << ", " << imag(stressTensor[0]) << endl;
-        // cout << real(stressTensor[1]) << ", " << imag(stressTensor[1]) << endl;
-    }
-    else {
-        cout << "stress tensor is nan" << endl;
-        return;
-    }
-    if (stressTensor.empty()) {
-        return;
-    } 
-    double SIF = calculateCaseAStressIntensityFactor(crackLength, planeWidth, stressTensor, normal);
-    cout << "Stress Intensity Factor (SIF): " << SIF << endl;
-    double criticalLength = calculateCriticalLength(crackLength, planeWidth, stressTensor, normal, KIC);
-    cout << "Critical Length: " << criticalLength << endl;
-    if (crackLength < criticalLength && SIF < KIC){ // TODO: change back to while loop
-        pair<Vec2D, double> growthInfo = calculateCrackGrowthDirectionAndRateForCrackInitiation(stressTensor, materialConstant, pairsExponent, SIF);
-        // TODO: this error checking is not correct
-        // if (dot(normal, growthInfo.first) * growthInfo.second <= 0){
-        //     cout << "crack growth direction is not valid" << endl;
-        //     cout << "crack growth direction: " << real(growthInfo.first) << ", " << imag(growthInfo.first) << endl;
-        //     cout << "crack growth rate: " << growthInfo.second << endl;
-        //     return;
-        // } 
-        // cout << "growth direction: " << real(growthInfo.first) << ", " << imag(growthInfo.first) << endl;
-        // cout << "growth rate: " << growthInfo.second << endl;
-        crackTip = crackTip + Vec2D{dot(normal, growthInfo.first) * growthInfo.second * real(growthInfo.first), dot(normal, growthInfo.first) * growthInfo.second * imag(growthInfo.first)};
-        crackLength = crackLength + dot(normal, growthInfo.first) * growthInfo.second;
-        // cout << "crackTip: " << real(crackTip) << ", " << imag(crackTip) << " with length: " << crackLength << endl;
-        // here we need to update the boundaries
-        // stressTensor = growHelper(crackTip, h, deform, strainFile, displacementFile, boundaryDirichlet, boundaryNeumann);
-        // if (stressTensor.empty()) {
-        //     return;
-        // } 
-        // std::cout << "crack grew" << std::endl;
-        // std::cout << "stress magnitude: " << getNormalStress(stressTensor, normal) << std::endl;
-        // crackLength = crackLength + dot(normal, growthInfo.first) * growthInfo.second;
-        // std::cout << "growth direction " << real(growthInfo.first) << " " << imag(growthInfo.second) << std::endl;
-        // criticalLength = calciulateCriticalLength(crackLength, planeWidth, stressTensor, normal, KIC);
-        // SIF = calculateCaseAStressIntensityFactor(crackLength, planeWidth, stressTensor, normal);
-        // std::cout << "Stress Intensity Factor (SIF): " << SIF << std::endl;
-        // std::cout << "Critical Length: " << criticalLength << std::endl;
-        // std::cout << "crackTip: " << real(crackTip) << ", " << imag(crackTip) << " with length: " << crackLength << endl;
+    double distance = length(point - crackTip);
+    double SIF = calculateEffectiveSIF(shearModulus, poissonRatio, distance, displacement1, displacement2, displacement3);
+   
+    if (SIF > KIC){ // TODO: change back to while loop
+        double rate = calculateCrackPropagationRate(rayleighWaveSpeed, KIC, SIF);
+        Vec2D growthDirection = determineCrackPropagationDirection(displacement1, displacement2, displacement3, poissonRatio);
+        crackTip = crackTip + Vec2D{dot(normal, growthDirection) * rate * real(growthDirection), dot(normal, growthDirection) * rate * imag(growthDirection)};
+        crackLength = crackLength + dot(normal, growthDirection) * rate;
     }
 }
+
+
 
 pair<Vec2D, double> adpativeSamplingHelper(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double stepsize, double& maxStress, function<Vec2D(Vec2D)> deform, double lam, double mu){
     if (stepsize < 1e-3 ) {
