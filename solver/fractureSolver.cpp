@@ -22,7 +22,7 @@ const int WIDTH = 6;
 const int HEIGHT = 4;
 
 vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
-vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
+vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(1, 0)} };
 vector<Polyline> displacedPoints =  {{ Vec2D(1.05, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.05, 0) }};
 
 // vector<Polyline> boundaryDirichlet = {{Vec2D(0, 0), Vec2D(1, 0)} , {Vec2D(1, 1), Vec2D(0, 1)}};
@@ -205,8 +205,6 @@ void growCrackTip(Vec2D crackTip, Vec2D crackLength, Vec2D point, double displac
     }
 }
 
-
-
 pair<Vec2D, double> adpativeSamplingHelper(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double stepsize, double& maxStress, function<Vec2D(Vec2D)> deform, double lam, double mu){
     if (stepsize < 1e-3 ) {
         return {point, maxStress};
@@ -314,23 +312,18 @@ pair<Vec2D, double> initializeCrackTip(function<Vec2D(Vec2D)> deform, vector<Pol
             Vec2D direction = (endPoint - startPoint) / length(endPoint - startPoint);
             double segmentLength = length(endPoint - startPoint);
 
+
             double t = stepSize;
             while (t <= segmentLength) { 
                 Vec2D point = startPoint + direction * t + Vec2D{0, 1e-5};
-                // cout << "point: " << real(point) << ", " << imag(point) << endl;
+                // TODO: we can do a caching of the displacement gradient
                 vector<Vec2D> displacementGradient = solveGradient(point, boundaryDirichlet, boundaryNeumann, deform);
                 displacementGradient[0] -= Vec2D(1, 0);
                 displacementGradient[1] -= Vec2D(0, 1);
-                // cout << "displacementGradient: " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << endl;
-                // cout << "displacementGradient: " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << endl;
                 vector<Vec2D> strain = calculateStrain(displacementGradient);
-                // cout << "strain: " << real(strain[0]) << ", " << imag(strain[0]) << endl;
-                // cout << "strain: " << real(strain[1]) << ", " << imag(strain[1]) << endl;
                 vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
                 auto stressDecomposed = eigenDecomposition(stressTensor);
                 double stressMagnitude = abs(stressDecomposed[0].first);
-                // cout << "Stress magnitude after recursive sampling: " << stressMagnitude << endl;
-                // cout << "Max stress: " << maxStress << endl;
 
                 if (stressMagnitude > maxStress) {
                     maxStress = stressMagnitude;
@@ -339,12 +332,12 @@ pair<Vec2D, double> initializeCrackTip(function<Vec2D(Vec2D)> deform, vector<Pol
                     double previousStress = maxStress;
                     stepSize /= 2;
 
-                    pair<Vec2D, double> stressRecursiveResult = adpativeSamplingHelper(point, boundaryDirichlet, boundaryNeumann, stepSize, previousStress, deform, lam, mu);
-                    if (stressRecursiveResult.second > maxStress) {
-                        maxStress = stressRecursiveResult.second;
-                        crackTip = stressRecursiveResult.first;
-                        // cout << "Updated crack tip: " << real(crackTip) << ", " << imag(crackTip) << endl;
-                    } 
+                    // pair<Vec2D, double> stressRecursiveResult = adpativeSamplingHelper(point, boundaryDirichlet, boundaryNeumann, stepSize, previousStress, deform, lam, mu);
+                    // if (stressRecursiveResult.second > maxStress) {
+                    //     maxStress = stressRecursiveResult.second;
+                    //     crackTip = stressRecursiveResult.first;
+                    //     // cout << "Updated crack tip: " << real(crackTip) << ", " << imag(crackTip) << endl;
+                    // } 
                 } else {
                     stepSize *= 1.5; 
                 }
