@@ -245,6 +245,60 @@ pair<Vec2D, double> adpativeSamplingHelper(Vec2D point, vector<Polyline> boundar
     return {point, maxStress};
 }
 
+vector<pair<Vec2D, double>> findCrackTipsFromCrackLines(function<Vec2D(Vec2D)> deform, vector<Polyline> crackLines, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double materialStrength, double lam, double mu){
+    vector<pair<Vec2D, double>> crackTips;
+    for (const auto& crackLine : crackLines) {
+        vector <Vec2D> ends;
+        if (crackLine.size() > 1) {
+            ends.push_back(crackLine[0]);
+            ends.push_back(crackLine[crackLine.size() - 1]);
+        }
+        else {
+            ends.push_back(crackLine[0]);
+        }
+        for (const auto& end : ends) {
+            vector<Vec2D> displacementGradient = solveGradient(end, boundaryDirichlet, boundaryNeumann, deform);
+            displacementGradient[0] -= Vec2D(1, 0);
+            displacementGradient[1] -= Vec2D(0, 1);
+            vector<Vec2D> strain = calculateStrain(displacementGradient);
+            vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
+            auto stressDecomposed = eigenDecomposition(stressTensor);
+            double stressMagnitude = abs(stressDecomposed[0].first);
+            if (stressMagnitude > materialStrength) {
+                crackTips.push_back(make_pair(end, stressMagnitude));
+            }
+        }
+    }
+    return crackTips;
+}
+
+vector<pair<Vec2D, double>> findCrackTipsFromBoundaries(function<Vec2D(Vec2D)> deform, vector<Polyline> crackLines, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double materialStrength, double lam, double mu){
+    vector<pair<Vec2D, double>> crackTips;
+    for (const auto& crackLine : crackLines) {
+        vector <Vec2D> ends;
+        if (crackLine.size() > 1 && crackLine[0] != crackLine[crackLine.size() - 1]) {
+            ends.push_back(crackLine[0]);
+            ends.push_back(crackLine[crackLine.size() - 1]);
+        }
+        else {
+            ends.push_back(crackLine[0]);
+        }
+        for (const auto& end : ends) {
+            vector<Vec2D> displacementGradient = solveGradient(end, boundaryDirichlet, boundaryNeumann, deform);
+            displacementGradient[0] -= Vec2D(1, 0);
+            displacementGradient[1] -= Vec2D(0, 1);
+            vector<Vec2D> strain = calculateStrain(displacementGradient);
+            vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
+            auto stressDecomposed = eigenDecomposition(stressTensor);
+            double stressMagnitude = abs(stressDecomposed[0].first);
+            if (stressMagnitude > materialStrength) {
+                crackTips.push_back(make_pair(end, stressMagnitude));
+            }
+        }
+    }
+    return crackTips;
+}
+
 pair<Vec2D, double> initializeCrackTip(function<Vec2D(Vec2D)> deform, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double materialStrength, double lam, double mu){
     Vec2D crackTip = numeric_limits<double>::quiet_NaN();
     double stepSize = 0.1;
