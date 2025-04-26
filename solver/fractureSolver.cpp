@@ -21,13 +21,9 @@ using namespace std::chrono;
 const int WIDTH = 6;
 const int HEIGHT = 4;
 
-vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0) }};
-vector<Polyline> boundaryNeumann = { {Vec2D(0, 0), Vec2D(1, 0)} };
-vector<Polyline> displacedPoints =  {{ Vec2D(1.05, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.05, 0) }};
-
-// vector<Polyline> boundaryDirichlet = {{Vec2D(0, 0), Vec2D(1, 0)} , {Vec2D(1, 1), Vec2D(0, 1)}};
-// vector<Polyline> boundaryNeumann = {{Vec2D(1, 0), Vec2D(1, 1)}, {Vec2D(0, 1), Vec2D(0, 0)}, {Vec2D(0.45, 0.4), Vec2D(0.55, 0.4), Vec2D(0.5, 0.5), Vec2D(0.45, 0.4)}};
-// vector<Polyline> displacedPoints = {{Vec2D(-0.1, 0), Vec2D(1.1, 0)} , {Vec2D(1.1, 1), Vec2D(-0.1, 1)}};
+vector<Polyline> boundaryDirichlet = {{Vec2D(0, 0), Vec2D(1, 0) , Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
+vector<Polyline> boundaryNeumann = { {Vec2D(0.45, 0.4), Vec2D(0.55, 0.4)}, {Vec2D(0.5, 0.5), Vec2D(0.45, 0.4)}};
+vector<Polyline> displacedPoints = {{Vec2D(-0.1, 0), Vec2D(1.1, 0) , Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0)}};
 
 Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
     for (int i = 0; i < originalPoints[0].size() - 1; i++) {
@@ -245,7 +241,7 @@ pair<Vec2D, double> adpativeSamplingHelper(Vec2D point, vector<Polyline> boundar
     return {point, maxStress};
 }
 
-vector<pair<Vec2D, double>> findCrackTipsFromCrackLines(function<Vec2D(Vec2D)> deform, vector<Polyline> crackLines, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double materialStrength, double lam, double mu){
+vector<pair<Vec2D, double>> findCrackTipsFromDefinedSegmentS(function<Vec2D(Vec2D)> deform, vector<Polyline> crackLines, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double materialStrength, double lam, double mu){
     vector<pair<Vec2D, double>> crackTips;
     for (const auto& crackLine : crackLines) {
         vector <Vec2D> ends;
@@ -257,7 +253,8 @@ vector<pair<Vec2D, double>> findCrackTipsFromCrackLines(function<Vec2D(Vec2D)> d
             ends.push_back(crackLine[0]);
         }
         for (const auto& end : ends) {
-            vector<Vec2D> displacementGradient = solveGradient(end, boundaryDirichlet, boundaryNeumann, deform);
+            // TODO: comf·irm whether we need to add offset for calculation
+            vector<Vec2D> displacementGradient = solveGradient(end + Vec2D(1e-5, 1e-5), boundaryDirichlet, boundaryNeumann, deform);
             displacementGradient[0] -= Vec2D(1, 0);
             displacementGradient[1] -= Vec2D(0, 1);
             vector<Vec2D> strain = calculateStrain(displacementGradient);
@@ -323,13 +320,11 @@ pair<Vec2D, double> initializeCrackTip(function<Vec2D(Vec2D)> deform, vector<Pol
                 for (const auto& neighbor : neighbors) {
                     Vec2D interpolatedPoint = interpolateVec2DBoundaryPoints(neighbor, boundaryDirichlet, displacedPoints);
                     if (isnan(real(interpolatedPoint)) || isnan(imag(interpolatedPoint))) {
-                        // std::cerr << "Error: Point is not on the boundary." << std::endl;
                         continue;
                     }
                     neighborsDeformed.push_back(interpolatedPoint);
                 } 
                 if (neighborsDeformed.size() != 4) {
-                    // std::cerr << "Error: Not enough deformed neighbors." << std::endl;
                     continue;
                 } 
                 double dudx = (real(neighborsDeformed[1]) - real(neighborsDeformed[0])) / (2 * h);
@@ -414,9 +409,12 @@ pair<Vec2D, double> initializeCrackTip(function<Vec2D(Vec2D)> deform, vector<Pol
 
 int main( int argc, char** argv ) {
     // below are constants for brittle engineering ceramics
-    auto result = initializeCrackTip(displacement, boundaryDirichlet, boundaryNeumann, 200, 70, 90);
-    cout << "Crack tip: " << real(result.first) << ", " << imag(result.first) << endl;
-    cout << "Max stress: " << result.second << endl;
+    
+    auto results = findCrackTipsFromCrackLines(displacement, boundaryNeumann, boundaryDirichlet, boundaryNeumann, 0.1, 1e5, 1e5);
+    for (auto& result : results) {
+        cout << "Crack tip: " << real(result.first) << ", " << imag(result.first) << endl;
+        cout << "Stress magnitude: " << result.second << endl;
+    }
     // double crackLength = 0.01; //estimateCrackLength(0.7, result.second);
     // cout << "Estimated crack length: " << crackLength << endl;
     // growCrackTip(result.first, crackLength, 1.0, Vec2D(0, -1), 3, 1e-10, 3, 70, 90, 1e-5, displacement, boundaryDirichlet, boundaryNeumann);
