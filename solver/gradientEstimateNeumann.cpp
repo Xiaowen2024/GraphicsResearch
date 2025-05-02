@@ -32,7 +32,7 @@ double random(double rMin, double rMax) {
 
 // use std::complex to implement 2D vectors
 using Vec2D = complex<double>;
-double length( Vec2D u ) { return sqrt( norm(u) ); }
+double length( Vec2D u ) { return sqrt( real(u) * real(u) + imag(u) * imag(u) ); }
 double angleOf(Vec2D u) { return arg(u); }
 Vec2D rotate90( Vec2D u ) { return Vec2D( -imag(u), real(u) ); }
 double   dot(Vec2D u, Vec2D v) { return real(u)*real(v) + imag(u)*imag(v); }
@@ -277,21 +277,23 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
          x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
          if (isStarting){
             isStarting = false;
-            normal = origv / length(origv);
+            normal = v / length(v);
+            if (abs(length(normal) - 1) > 1e-6) {
+               cout << "normal is not unit length" << endl;
+            }
             raidus = dDirichlet;
          }
          steps++;
-      }
+      } 
       while(dDirichlet > eps && steps < maxSteps);
 
       if( steps >= maxSteps ) continue;
-      Vec2D estimated_u = g(closestPoint);
-      Vec2D estimated_displacement = estimated_u - x0;
-      vector<Vec2D> estimated_gradient = multiply(estimated_u, normal);
+      Vec2D estimated_displacement = g(closestPoint);
+      vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
       estimated_gradient = { Vec2D(2 * 1/raidus * real(estimated_gradient[0]), 2 * 1/raidus * imag(estimated_gradient[0])),
       Vec2D(2 * 1/raidus * real(estimated_gradient[1]), 2 * 1/raidus * imag(estimated_gradient[1])) };
      
-      if (isnan(real(estimated_u)) || isnan(imag(estimated_u))) {
+      if (isnan(real(estimated_displacement)) || isnan(imag(estimated_displacement))) {
          continue;
       }
       walker += 1;
@@ -351,7 +353,7 @@ Vec2D displacement(Vec2D v) {
    if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
       return nan;
    }
-   return interpolatedDisplacement;
+   return interpolatedDisplacement - v;
 }
 
 Vec2D deformBoundary(Vec2D v) { 
@@ -408,7 +410,7 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_bottom_notch_displacement_estimate_for_gradient_2";
+   string shape = "gradient_estimate_notch_neumann_correct_debug_1";
    string fileName = shape; 
    auto deform = displacement;
 
