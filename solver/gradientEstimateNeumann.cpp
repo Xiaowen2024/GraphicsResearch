@@ -288,7 +288,8 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       while(dDirichlet > eps && steps < maxSteps);
 
       if( steps >= maxSteps ) continue;
-      Vec2D estimated_displacement = g(closestPoint);
+      Vec2D estimated_position = g(closestPoint);
+      Vec2D estimated_displacement = estimated_position - x0;
       vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
       estimated_gradient = { Vec2D(2 * 1/raidus * real(estimated_gradient[0]), 2 * 1/raidus * imag(estimated_gradient[0])),
       Vec2D(2 * 1/raidus * real(estimated_gradient[1]), 2 * 1/raidus * imag(estimated_gradient[1])) };
@@ -410,11 +411,11 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_neumann_correct_debug_1";
+   string shape = "gradient_estimate_notch_neumann_correct";
    string fileName = shape; 
    auto deform = displacement;
 
-   int s = 32; 
+   int s = 16; 
    std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
    std::ofstream displacementFile("../output/" + fileName + "_displacement.csv");
 
