@@ -257,6 +257,7 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       Vec2D closestPoint;
       bool isStarting = true;
       Vec2D normal = Vec2D(0, 0);
+      Vec2D firstHitBoundary = Vec2D(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
       double raidus = 0;
       do {  
          center = x;
@@ -271,25 +272,30 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
          Vec2D origv{ cos(theta), sin(theta) };
          if( onBoundary ) { // sample from a hemisphere around the normal
             theta = theta/2. + angleOf(n);
+            firstHitBoundary = x;
          }
 
          Vec2D v{ cos(theta), sin(theta) };
          x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
          if (isStarting){
             isStarting = false;
-            normal = v / length(v);
-            if (abs(length(normal) - 1) > 1e-6) {
-               cout << "normal is not unit length" << endl;
+            normal = origv / length(origv);
+            if (real(origv) != real(v)){
+               cout << "found neumann reflection case in first hit" << endl;
             }
             raidus = dDirichlet;
          }
          steps++;
       } 
       while(dDirichlet > eps && steps < maxSteps);
-
+      
       if( steps >= maxSteps ) continue;
+
+      if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
+         firstHitBoundary = closestPoint;
+      }
       Vec2D estimated_position = g(closestPoint);
-      Vec2D estimated_displacement = estimated_position - x0;
+      Vec2D estimated_displacement = estimated_position - firstHitBoundary;
       vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
       estimated_gradient = { Vec2D(2 * 1/raidus * real(estimated_gradient[0]), 2 * 1/raidus * imag(estimated_gradient[0])),
       Vec2D(2 * 1/raidus * real(estimated_gradient[1]), 2 * 1/raidus * imag(estimated_gradient[1])) };
@@ -317,7 +323,7 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
 }
 
 vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
-vector<Polyline> boundaryNeumann =   { {Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
+vector<Polyline> boundaryNeumann = { { Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
 vector<Polyline> displacedPoints =  {{  Vec2D(1.1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.1, 0)}};
 
 double signedAngle( Vec2D x, const vector<Polyline>& P )
@@ -354,7 +360,7 @@ Vec2D displacement(Vec2D v) {
    if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
       return nan;
    }
-   return interpolatedDisplacement - v;
+   return interpolatedDisplacement;
 }
 
 Vec2D deformBoundary(Vec2D v) { 
@@ -411,7 +417,7 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_neumann_correct";
+   string shape = "gradient_estimate_notch_neumann_first_hit_boundary";
    string fileName = shape; 
    auto deform = displacement;
 
