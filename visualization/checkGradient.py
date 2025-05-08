@@ -128,7 +128,19 @@ filtered_diff_results = [
 ]
 
 # === Save filtered differences ===
+# Save filtered differences
 filtered_output_df = pd.DataFrame(filtered_diff_results, columns=['X', 'Y', 'dudx-F11', 'dudy-F12', 'dvdx-F21', 'dvdy-F22'])
 filtered_output_df.dropna(inplace=True)
 filtered_output_df.to_csv(f'../output/{name}_filtered_gradient_differences.csv', index=False)
+
+# Save calculated gradients
+calculated_gradients_df = pd.DataFrame({
+    'X': gradient_x,
+    'Y': gradient_y,
+    'dudx': dudx,
+    'dudy': dudy,
+    'dvdx': dvdx,
+    'dvdy': dvdy
+})
+calculated_gradients_df.to_csv(f'../output/{name}_calculated_gradients.csv', index=False)
 
