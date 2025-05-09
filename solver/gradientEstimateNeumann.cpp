@@ -8,7 +8,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
-#include <fstream>
+#include <fstream> 
 #include <chrono>
 using namespace std;
 using namespace std::chrono;
@@ -21,6 +21,7 @@ std::uniform_real_distribution<double> dist(-M_PI, M_PI);
 
 // the constant "infinity" is used as a maximum value in several calculations
 const double infinity = numeric_limits<double>::infinity();
+
 
 // returns a random value in the range [rMin,rMax]
 double random(double rMin, double rMax) {
@@ -94,10 +95,26 @@ double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
     return infinity;  // No valid intersection
 }
 
+vector<Polyline> boundaryDirichlet = {{ Vec2D(0.8, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.2, 0) }};
+vector<Polyline> boundaryNeumann = { { Vec2D(0.2, 0), Vec2D(0.5, 0.18), Vec2D(0.5, 0.19), Vec2D(0.8, 0)} };
+vector<Polyline> displacedPoints =  {{  Vec2D(0.8, 0), Vec2D(1.1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.1, 0), Vec2D(0.2, 0)}};
+
+bool isCloseToNeumannBoundary(Vec2D x0, const vector<Polyline>& boundaryNeumann, double tolerance) {
+   for (const auto& polyline : boundaryNeumann) {
+      for (size_t i = 0; i < polyline.size() - 1; ++i) {
+         Vec2D closest = closestPoint(x0, polyline[i], polyline[i + 1]);
+         if (length(x0 - closest) <= tolerance) {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
 
 Vec2D intersectPolylines(Vec2D x, Vec2D v, double r,
                          const vector<Polyline>& P,
-                         Vec2D& n, bool& onBoundary) {
+                         Vec2D& n, bool& onBoundary, bool& onNeumann) {
     double tMin = r;  // smallest hit time so far
     n = Vec2D{ 0.0, 0.0 };  // first hit normal
     onBoundary = false;  // will be true only if the first hit is on a segment
@@ -118,7 +135,8 @@ Vec2D intersectPolylines(Vec2D x, Vec2D v, double r,
                     n /= length(n);  // make normal unit length
                 }
                 
-                onBoundary = true;
+               onBoundary = true;
+               onNeumann = isCloseToNeumannBoundary(x + tMin * v, boundaryNeumann, 1e-5);
             }
         }
     }
@@ -160,6 +178,8 @@ double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    return d;
 }
 
+
+
 Vec2D solve( Vec2D x0, // evaluation point
    vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
    vector<Polyline> boundaryNeumann, // reflecting part of the boundary
@@ -188,6 +208,7 @@ Vec2D solve( Vec2D x0, // evaluation point
          Vec2D x = x0; // start walk at the evaluation point
          Vec2D n{ 0.0, 0.0 }; // assume x0 is an interior point, and has no normal
          bool onBoundary = false; // flag whether x is on the interior or boundary
+         bool onNeumann = false;
          double r, dDirichlet, dSilhouette; // radii used to define star shaped region
          int steps = 0;
          Vec2D closestPoint;
@@ -202,7 +223,7 @@ Vec2D solve( Vec2D x0, // evaluation point
             theta = theta/2. + angleOf(n);
          }
          Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
-         x =  intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
+         x =  intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary, onNeumann);
          steps++;
          }
          while(dDirichlet > eps && steps < maxSteps);
@@ -219,13 +240,18 @@ Vec2D solve( Vec2D x0, // evaluation point
       return Vec2D(sum_x/walker, sum_y/walker);
 }
 
+
+
 vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
               vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
               vector<Polyline> boundaryNeumann, // reflecting part of the boundary
               function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
    const double eps = 0.000001; // stopping tolerance
    const double rMin = 0.000001; // minimum step size
-   const int nWalks = 100000 ;//100000000; // number of Monte Carlo samples
+   int nWalks = 100000;
+   // if (isCloseToNeumannBoundary(x0, boundaryNeumann, 0.1)) {
+   //    nWalks = 1000000;
+   // }
    const int maxSteps = 65536; // maximum walk length
    double sum_11 = 0.0; 
    double sum_12 = 0.0;
@@ -252,6 +278,7 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       Vec2D x = x0; 
       Vec2D n{ 0.0, 0.0 }; 
       bool onBoundary = false; 
+      bool onNeumann = false; 
       double r, dDirichlet, dSilhouette; 
       int steps = 0;
       Vec2D closestPoint;
@@ -266,24 +293,24 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
          closestPoint = p.second;
          dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
          r = max( rMin, min( dDirichlet, dSilhouette ));
-
-         // intersect a ray with the star-shaped region boundary
+         // sample a random direction on the unit sphere
+         // TODO: see if theta influences the result
          double theta = random( -M_PI, M_PI );
          Vec2D origv{ cos(theta), sin(theta) };
-         if( onBoundary ) { // sample from a hemisphere around the normal
+         if ( onBoundary && onNeumann ) { // sample from a hemisphere around the normal
             theta = theta/2. + angleOf(n);
-            firstHitBoundary = x;
+            if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
+               firstHitBoundary = x;
+            }
          }
-
          Vec2D v{ cos(theta), sin(theta) };
-         x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary );
+         x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary, onNeumann);
          if (isStarting){
             isStarting = false;
             normal = origv / length(origv);
-            if (real(origv) != real(v)){
-               cout << "found neumann reflection case in first hit" << endl;
-            }
-            raidus = dDirichlet;
+            // TODO: check if radius influences the result
+            // this does change why?
+            raidus = length(x - x0);
          }
          steps++;
       } 
@@ -321,10 +348,6 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    Vec2D row2 = Vec2D(sum_21/walker, sum_22/walker);
    return {row1, row2};
 }
-
-vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
-vector<Polyline> boundaryNeumann = { { Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0)} };
-vector<Polyline> displacedPoints =  {{  Vec2D(1.1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.1, 0)}};
 
 double signedAngle( Vec2D x, const vector<Polyline>& P )
 {
@@ -417,14 +440,13 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_neumann_first_hit_boundary";
+   string shape = "gradient_estimate_notch_neumann_first_hit_boundary_flat_notch_3";
    string fileName = shape; 
    auto deform = displacement;
 
    int s = 16; 
    std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
    std::ofstream displacementFile("../output/" + fileName + "_displacement.csv");
-
    for( int j = 0; j < s; j++ )
    {
       for( int i = 0; i < s; i++ )
@@ -435,7 +457,6 @@ int main( int argc, char** argv ) {
          double x = real(x0);
          double y = imag(x0);
          if( insideDomain(x0, boundaryDirichlet, boundaryNeumann)){
-
             vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
          }
       } 
