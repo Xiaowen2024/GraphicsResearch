@@ -9,7 +9,10 @@
 #include <vector>
 #include <fstream>
 #include <chrono> 
-// #include <SFML/Graphics.hpp>
+#include <map>
+#include "json.hpp"
+using json = nlohmann::json;
+// #include <SFML/Graphics.hp>
 #include <cmath>
 using namespace std;
 using namespace std::chrono; 
@@ -20,10 +23,6 @@ using namespace std::chrono;
 
 const int WIDTH = 6;
 const int HEIGHT = 4;
-
-vector<Polyline> boundaryDirichlet = {{ Vec2D(0.8, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.2, 0), Vec2D(0.5, 0.2), Vec2D(0.8, 0)}};
-vector<Polyline> boundaryNeumann = { };
-vector<Polyline> displacedPoints =  {{ Vec2D(0.8, 0), Vec2D(1.1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.1, 0), Vec2D(0.2, 0), Vec2D(0.5, 0.2), Vec2D(0.8, 0)}};
 
 Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
     for (int i = 0; i < originalPoints[0].size() - 1; i++) {
@@ -43,15 +42,41 @@ Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, v
     return nan;
 }
 
-Vec2D displacement(Vec2D v) {
- 
+Vec2D displacement(Vec2D v, vector<Polyline> boundaryDirichlet, vector<Polyline> displacedBoundaryDirichlet) {
     Vec2D nan = numeric_limits<double>::quiet_NaN();
- 
-    Vec2D interpolatedDisplacement = interpolateVec2DBoundaryPoints(v, boundaryDirichlet, displacedPoints);
+    Vec2D interpolatedDisplacement = interpolateVec2DBoundaryPoints(v, boundaryDirichlet, displacedBoundaryDirichlet);
     if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
        return nan;
     }
     return interpolatedDisplacement;
+}
+
+vector<Polyline> extractBoundaries(string inputFilePath, string key) {
+    ifstream inputFile(inputFilePath);
+    if (!inputFile.is_open()) {
+        cerr << "Error opening file: " << inputFilePath << endl;
+        return {};
+    }
+
+    nlohmann::json data;
+    inputFile >> data;
+
+    vector<Polyline> boundaries;
+    if (data.contains(key)) {
+        for (const auto& boundary : data[key]) {
+            Polyline polyline;
+            for (const auto& point : boundary) {
+                double x = point["x"];
+                double y = point["y"];
+                polyline.push_back(Vec2D(x, y));
+            }
+            boundaries.push_back(polyline);
+        }
+    } else {
+        cerr << "Key not found in JSON: " << key << endl;
+    }
+    inputFile.close();
+    return boundaries;
 }
 
 // void plotStressVector(vector<pair<double, Vec2D>> tensilePair, vector<pair<double, Vec2D>> compressivePair, Vec2D crackTip, sf::RenderWindow& window) {
@@ -192,47 +217,47 @@ void growCrackTip(Vec2D crackTip, Vec2D crackLength, Vec2D point, double displac
     }
 }
 
-pair<Vec2D, double> adpativeSamplingHelper(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double stepsize, double& maxStress, function<Vec2D(Vec2D)> deform, double lam, double mu){
-    if (stepsize < 1e-3 ) {
-        return {point, maxStress};
-    } 
-    Vec2D pointLeft = point + Vec2D{-stepsize, 0};
-    Vec2D pointRight = point + Vec2D{stepsize, 0};
-    vector<Vec2D> displacementGradientLeft = solveGradient(pointLeft, boundaryDirichlet, boundaryNeumann, deform);
-    displacementGradientLeft[0] -= Vec2D(1, 0);
-    displacementGradientLeft[1] -= Vec2D(0, 1);
-    vector<Vec2D> strainLeft = calculateStrain(displacementGradientLeft);
-    vector<Vec2D> stressTensorLeft = getStress(lam, mu, real(strainLeft[0]) + imag(strainLeft[1]), real(strainLeft[0]), imag(strainLeft[0]), real(strainLeft[1]), imag(strainLeft[1]));
-    auto principleStressLeft = eigenDecomposition(stressTensorLeft);
-    double stressMagnitudeLeft = abs(principleStressLeft[0].first);
+// pair<Vec2D, double> adpativeSamplingHelper(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double stepsize, double& maxStress, function<Vec2D(Vec2D)> deform, double lam, double mu){
+//     if (stepsize < 1e-3 ) {
+//         return {point, maxStress};
+//     } 
+//     Vec2D pointLeft = point + Vec2D{-stepsize, 0};
+//     Vec2D pointRight = point + Vec2D{stepsize, 0};
+//     vector<Vec2D> displacementGradientLeft = solveGradient(pointLeft, boundaryDirichlet, boundaryNeumann, deform);
+//     displacementGradientLeft[0] -= Vec2D(1, 0);
+//     displacementGradientLeft[1] -= Vec2D(0, 1);
+//     vector<Vec2D> strainLeft = calculateStrain(displacementGradientLeft);
+//     vector<Vec2D> stressTensorLeft = getStress(lam, mu, real(strainLeft[0]) + imag(strainLeft[1]), real(strainLeft[0]), imag(strainLeft[0]), real(strainLeft[1]), imag(strainLeft[1]));
+//     auto principleStressLeft = eigenDecomposition(stressTensorLeft);
+//     double stressMagnitudeLeft = abs(principleStressLeft[0].first);
 
-    vector<Vec2D> displacementGradientRight = solveGradient(pointRight, boundaryDirichlet, boundaryNeumann, deform);
-    displacementGradientRight[0] -= Vec2D(1, 0);
-    displacementGradientRight[1] -= Vec2D(0, 1);
-    vector<Vec2D> strainRight = calculateStrain(displacementGradientRight);
-    vector<Vec2D> stressTensorRight = getStress(lam, mu, real(strainRight[0]) + imag(strainRight[1]), real(strainRight[0]), imag(strainRight[0]), real(strainRight[1]), imag(strainRight[1]));
-    auto principleStressRight = eigenDecomposition(stressTensorRight);
-    double stressMagnitudeRight = abs(principleStressRight[0].first);
+//     vector<Vec2D> displacementGradientRight = solveGradient(pointRight, boundaryDirichlet, boundaryNeumann, deform);
+//     displacementGradientRight[0] -= Vec2D(1, 0);
+//     displacementGradientRight[1] -= Vec2D(0, 1);
+//     vector<Vec2D> strainRight = calculateStrain(displacementGradientRight);
+//     vector<Vec2D> stressTensorRight = getStress(lam, mu, real(strainRight[0]) + imag(strainRight[1]), real(strainRight[0]), imag(strainRight[0]), real(strainRight[1]), imag(strainRight[1]));
+//     auto principleStressRight = eigenDecomposition(stressTensorRight);
+//     double stressMagnitudeRight = abs(principleStressRight[0].first);
 
-    double stressMagnitude = max(stressMagnitudeLeft, stressMagnitudeRight);
-    if ( stressMagnitude > maxStress) {
-        maxStress = stressMagnitude;
-        stepsize /= 2;
-        auto maxStressPairLeft = adpativeSamplingHelper(point, boundaryDirichlet, boundaryNeumann, stepsize, maxStress, deform, lam, mu);
-        auto maxStressPairRight = adpativeSamplingHelper(point, boundaryDirichlet, boundaryNeumann, stepsize, maxStress, deform, lam, mu);
-        if (maxStressPairLeft.second > maxStress) {
-            return maxStressPairLeft;
-        } else if (maxStressPairRight.second > maxStress) {
-            return maxStressPairRight;
-        }
-        else {
-            return {stressMagnitudeLeft > stressMagnitudeRight ? pointLeft : pointRight, maxStress};
-        }
-    }
-    return {point, maxStress};
-}
+//     double stressMagnitude = max(stressMagnitudeLeft, stressMagnitudeRight);
+//     if ( stressMagnitude > maxStress) {
+//         maxStress = stressMagnitude;
+//         stepsize /= 2;
+//         auto maxStressPairLeft = adpativeSamplingHelper(point, boundaryDirichlet, boundaryNeumann, stepsize, maxStress, deform, lam, mu);
+//         auto maxStressPairRight = adpativeSamplingHelper(point, boundaryDirichlet, boundaryNeumann, stepsize, maxStress, deform, lam, mu);
+//         if (maxStressPairLeft.second > maxStress) {
+//             return maxStressPairLeft;
+//         } else if (maxStressPairRight.second > maxStress) {
+//             return maxStressPairRight;
+//         }
+//         else {
+//             return {stressMagnitudeLeft > stressMagnitudeRight ? pointLeft : pointRight, maxStress};
+//         }
+//     }
+//     return {point, maxStress};
+// }
 
-vector<pair<Vec2D, double>> findCrackTipsFromBoundaries(function<Vec2D(Vec2D)> deform, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, double materialStrength, double lam, double mu){
+map<Vec2D, pair<Vec2D, double>> findCrackTipsFromBoundaries(function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> displacement, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, vector<Polyline> displacedBoundaryDirichlet, double materialStrength, double lam, double mu, std::ofstream& crackInformationFile) {
     map<Vec2D, pair<Vec2D, double>> crackTips;
     for (const auto& boundary : {boundaryDirichlet, boundaryNeumann}) {
         for (const auto& polyline : boundary) {
@@ -253,8 +278,8 @@ vector<pair<Vec2D, double>> findCrackTipsFromBoundaries(function<Vec2D(Vec2D)> d
                 else {
                     continue;
                 } 
-                Vec2D displacedPoint;
-                vector<Vec2D> displacementGradient = solveGradient(point, boundaryDirichlet, boundaryNeumann, deform, displacedPoint);
+                Vec2D displacedPoint = displacement(point, boundaryDirichlet, displacedBoundaryDirichlet);
+                vector<Vec2D> displacementGradient = solveGradient(point, boundaryDirichlet, boundaryNeumann, displacedBoundaryDirichlet, displacement, displacedPoint);
                 vector<Vec2D> strain = calculateStrain(displacementGradient);
                 vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
                 auto stressDecomposed = eigenDecomposition(stressTensor);
@@ -263,27 +288,26 @@ vector<pair<Vec2D, double>> findCrackTipsFromBoundaries(function<Vec2D(Vec2D)> d
                 cout << "strain: " << real(strain[0]) << ", " << imag(strain[0]) << endl;
                 cout << "strain: " << real(strain[1]) << ", " << imag(strain[1]) << endl;
                 if (stressMagnitude > materialStrength) {
-                    crackTips.insert(make_pair(point, make_pair(displacedPoint, stressMagnitude)));
+                    crackInformationFile << 0 << ", " << real(point) << ", " << imag(point) << ", " << real(displacedPoint) << ", " << imag(displacedPoint) << ", " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << ", " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << "\n";
+                    crackInformationFile.close();
                 }
             }
         }
-    }
-
-  
-    for (const auto& crackTip : crackTips) {
-        cout << "Crack tip: " << real(crackTip.first) << ", " << imag(crackTip.first) << " stress: " << crackTip.second << endl;
-        crackInformationFile << 0 << ", " << real(crackTip) << ", " << imag(crackTip) << ", " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << ", " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << "\n";
-        crackInformationFile.close();
     }
 
     return crackTips;
 }
 
 int main( int argc, char** argv ) {
-    // below are constants for brittle engineering ceramics
+    string fileName = "dirichletHorizontalStretchNotch";
     std::ofstream crackInformationFile("../output/" + fileName + "_deformation_gradient.csv");
-    crackInformationFile << "Round, CrackTipX, CrackTipY, DisplacedX, DisplacedY, StrainDuDx, StrainDuDy, StrainDvDx, StrainDvDy\n";
-    auto results = findCrackTipsFromBoundaries(displacement, boundaryDirichlet, boundaryNeumann, 100, 100, 80, crackInformationFile);
+    crackInformationFile << "Round, CrackTipX, CrackTipY, DisplacedX, DisplacedY, DuDx, DuDy, DvDx, DvDy\n";
+    const string configPath = "../fractureCases/" + fileName + ".json";
+    auto boundaryDirichlet = extractBoundaries(configPath, "boundaryDirichlet");
+    auto boundaryNeumann = extractBoundaries(configPath, "boundaryNeumann");
+    auto displacedBoundaryDirichlet = extractBoundaries(configPath, "displacedBoundaryDirichlet");
+
+    auto results = findCrackTipsFromBoundaries(displacement, boundaryDirichlet, boundaryNeumann, displacedBoundaryDirichlet, 100, 100, 80, crackInformationFile);
     for (auto& result : results) {
         cout << "Crack tip: " << real(result.first) << ", " << imag(result.first) << endl;
         cout << "Stress magnitude: " << result.second << endl;
