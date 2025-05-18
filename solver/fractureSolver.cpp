@@ -63,13 +63,13 @@ vector<Polyline> extractBoundaries(string inputFilePath, string key) {
 
     vector<Polyline> boundaries;
     if (data.contains(key)) {
-        for (const auto& boundary : data[key]) {
-            Polyline polyline;
-            for (const auto& point : boundary) {
-                double x = point["x"];
-                double y = point["y"];
-                polyline.push_back(Vec2D(x, y));
-            }
+        Polyline polyline = {};
+        for (const auto& point : data[key]) {
+            double x = point["x"];
+            double y = point["y"];
+            polyline.push_back(Vec2D(x, y));
+        }
+        if (polyline.size() > 0) {
             boundaries.push_back(polyline);
         }
     } else {
@@ -257,8 +257,8 @@ void growCrackTip(Vec2D crackTip, Vec2D crackLength, Vec2D point, double displac
 //     return {point, maxStress};
 // }
 
-map<Vec2D, pair<Vec2D, double>> findCrackTipsFromBoundaries(function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> displacement, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, vector<Polyline> displacedBoundaryDirichlet, double materialStrength, double lam, double mu, std::ofstream& crackInformationFile) {
-    map<Vec2D, pair<Vec2D, double>> crackTips;
+map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> findCrackTipsFromBoundaries(function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> displacement, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, vector<Polyline> displacedBoundaryDirichlet, double materialStrength, double lam, double mu, std::ofstream& crackInformationFile) {
+    map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> crackTips;
     for (const auto& boundary : {boundaryDirichlet, boundaryNeumann}) {
         for (const auto& polyline : boundary) {
             for (size_t i = 0; i < polyline.size(); ++i) {
@@ -284,23 +284,38 @@ map<Vec2D, pair<Vec2D, double>> findCrackTipsFromBoundaries(function<Vec2D(Vec2D
                 vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
                 auto stressDecomposed = eigenDecomposition(stressTensor);
                 double stressMagnitude = stressDecomposed[0].first;
-                cout << "position: " << real(point) << ", " << imag(point) << " magnitude: " << stressMagnitude << endl;
-                cout << "strain: " << real(strain[0]) << ", " << imag(strain[0]) << endl;
-                cout << "strain: " << real(strain[1]) << ", " << imag(strain[1]) << endl;
+                Vec2D direction = stressDecomposed[0].second;
                 if (stressMagnitude > materialStrength) {
                     crackInformationFile << 0 << ", " << real(point) << ", " << imag(point) << ", " << real(displacedPoint) << ", " << imag(displacedPoint) << ", " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << ", " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << "\n";
-                    crackInformationFile.close();
+                    crackTips.insert({point, {{displacedPoint, stressMagnitude}, direction}});
+                }
+            }
+        }
+    }
+    return crackTips;
+}
+
+void updateBoundaries(int round, string fileName, map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> crackTips, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, vector<Polyline> displacedBoundaryDirichlet) {
+    for (auto& polyline : boundaryDirichlet) {
+        for (auto& point : polyline) {
+            if (crackTips.find(point) != crackTips.end()) {
+                auto displacedPoint = crackTips[point].first.first;
+                auto it = find(displacedBoundaryDirichlet[0].begin(), displacedBoundaryDirichlet[0].end(), point);
+                if (it != displacedBoundaryDirichlet[0].end()) {
+                    *it = displacedPoint;
                 }
             }
         }
     }
 
-    return crackTips;
+
+
+
 }
 
 int main( int argc, char** argv ) {
     string fileName = "dirichletHorizontalStretchNotch";
-    std::ofstream crackInformationFile("../output/" + fileName + "_deformation_gradient.csv");
+    std::ofstream crackInformationFile("../fractureOutput/" + fileName + "CrackInfo.csv");
     crackInformationFile << "Round, CrackTipX, CrackTipY, DisplacedX, DisplacedY, DuDx, DuDy, DvDx, DvDy\n";
     const string configPath = "../fractureCases/" + fileName + ".json";
     auto boundaryDirichlet = extractBoundaries(configPath, "boundaryDirichlet");
@@ -310,7 +325,7 @@ int main( int argc, char** argv ) {
     auto results = findCrackTipsFromBoundaries(displacement, boundaryDirichlet, boundaryNeumann, displacedBoundaryDirichlet, 100, 100, 80, crackInformationFile);
     for (auto& result : results) {
         cout << "Crack tip: " << real(result.first) << ", " << imag(result.first) << endl;
-        cout << "Stress magnitude: " << result.second << endl;
+        cout << "Stress magnitude: " << result.second.first.second << endl;
     }
 }
 
