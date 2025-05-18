@@ -301,16 +301,30 @@ void updateBoundaries(int round, string fileName, map<Vec2D, pair<pair<Vec2D, do
             if (crackTips.find(point) != crackTips.end()) {
                 auto displacedPoint = crackTips[point].first.first;
                 auto it = find(displacedBoundaryDirichlet[0].begin(), displacedBoundaryDirichlet[0].end(), point);
+                Vec2D crackDirection = crackTips[point].second;
+                Vec2D crackDirectionNormalized = crackDirection / length(crackDirection);
+                Vec2D leftCrackPosition;
+                Vec2D rightCrackPosition;
+                if (imag(crackDirection) > 0) {
+                    leftCrackPosition = displacedPoint - crackDirectionNormalized * 0.05;
+                    rightCrackPosition = displacedPoint + crackDirectionNormalized * 0.05;
+                } else {
+                    leftCrackPosition = displacedPoint + crackDirectionNormalized * 0.05;
+                    rightCrackPosition = displacedPoint - crackDirectionNormalized * 0.05;
+                }
+                
+                Vec2D crackTipPosition1 = displacedPoint + rotate90(crackDirectionNormalized) * 0.05;
+                Vec2D crackTipPosition2 = displacedPoint - rotate90(crackDirectionNormalized) * 0.05;
+                Vec2D crackTipPosition = insideDomain(crackTipPosition1, boundaryDirichlet, boundaryNeumann) ? crackTipPosition1 : crackTipPosition2;
+                
                 if (it != displacedBoundaryDirichlet[0].end()) {
-                    *it = displacedPoint;
+                    *it = leftCrackPosition;
+                    displacedBoundaryDirichlet[0].insert(it + 1, crackTipPosition);
+                    displacedBoundaryDirichlet[0].insert(it + 2, rightCrackPosition);
                 }
             }
         }
     }
-
-
-
-
 }
 
 int main( int argc, char** argv ) {
