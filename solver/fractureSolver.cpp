@@ -260,9 +260,11 @@ void growCrackTip(Vec2D crackTip, Vec2D crackLength, Vec2D point, double displac
 
 map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> findCrackTipsFromBoundaries(int round, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> displacement, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, vector<Polyline> displacedBoundaryDirichlet, double materialStrength, double lam, double mu, std::ofstream& crackInformationFile) {
     map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> crackTips;
-    for (const auto& boundary : {boundaryDirichlet, boundaryNeumann}) {
+
+    for (const auto& boundary : {boundaryDirichlet, boundaryNeumann}) { 
         for (const auto& polyline : boundary) {
             for (size_t i = 0; i < polyline.size(); ++i) {
+
                 Vec2D originalPoint = polyline[i];
                 Vec2D point = originalPoint;
                 if (insideDomain(point + Vec2D(1e-3, 1e-3), boundaryDirichlet, boundaryNeumann)) {
@@ -278,9 +280,12 @@ map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> findCrackTipsFromBound
                    point = point - Vec2D(-1e-3, 1e-3);
                 }
                 else {
+                    cout << "Round: " << round << endl;
+                    cout << "Point is not inside the domain: " << real(point) << ", " << imag(point) << endl;
                     continue;
                 } 
-                Vec2D displacedPoint = displacement(point, boundaryDirichlet, displacedBoundaryDirichlet);
+                Vec2D displacedPoint = displacement(originalPoint, boundaryDirichlet, displacedBoundaryDirichlet);
+                Vec2D displacedPointAnalytic =  displacement(originalPoint, boundaryDirichlet, displacedBoundaryDirichlet);
                 vector<Vec2D> displacementGradient = solveGradient(point, boundaryDirichlet, boundaryNeumann, displacedBoundaryDirichlet, displacement, displacedPoint);
                 vector<Vec2D> strain = calculateStrain(displacementGradient);
                 vector<Vec2D> stressTensor = getStress(lam, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
@@ -288,27 +293,34 @@ map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> findCrackTipsFromBound
                 double stressMagnitude = stressDecomposed[0].first;
                 Vec2D direction = stressDecomposed[0].second;
                 if (stressMagnitude > materialStrength) {
-                    crackInformationFile << round << ", " << real(point) << ", " << imag(point) << ", " << real(displacedPoint) << ", " << imag(displacedPoint) << ", " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << ", " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << "\n";
-                    crackTips.insert({originalPoint, {{displacedPoint, stressMagnitude}, direction}});
-                    cout << "Round: " << round << ", Crack tip: " << real(originalPoint) << ", " << imag(originalPoint) << ", Displaced point: " << real(displacedPoint) << ", " << imag(displacedPoint) << ", Stress magnitude: " << stressMagnitude << endl;
+                    crackInformationFile << round << ", " << real(point) << ", " << imag(point) << ", " << real(displacedPointAnalytic) << ", " << imag(displacedPointAnalytic) << ", " << real(displacementGradient[0]) << ", " << imag(displacementGradient[0]) << ", " << real(displacementGradient[1]) << ", " << imag(displacementGradient[1]) << "\n";
+                    crackTips.insert({originalPoint, {{displacedPointAnalytic, stressMagnitude}, direction}});
+                    cout << "Round: " << round << ", Crack tip: " << real(originalPoint) << ", " << imag(originalPoint) << ", Displaced point: " << real(displacedPointAnalytic) << ", " << imag(displacedPointAnalytic) << ", Stress magnitude: " << stressMagnitude << endl;
+                }
+                else {
+                    cout << "Round: " << round << ", Crack tip (failed): " << real(originalPoint) << ", " << imag(originalPoint) << ", Displaced point: " << real(displacedPointAnalytic) << ", " << imag(displacedPointAnalytic) << ", Stress magnitude: " << stressMagnitude << endl;
                 }
             }
-        }
+        } 
     }
     return crackTips;
 }
 
-void updateDirichletBoundaries(int round, string fileName, map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> crackTips, vector<Polyline>& boundaryDirichlet, const vector<Polyline>& boundaryNeumann, vector<Polyline>& displacedBoundaryDirichlet) {
-    for (const auto& polyline : boundaryDirichlet) {
-        for (const auto& point : polyline) {
-            cout << "Point: " << real(point) << ", " << imag(point) << endl;
+void updateBoundaries(int round, string fileName, map<Vec2D, pair<pair<Vec2D, double>, Vec2D>, ComplexLess> crackTips, vector<Polyline>& boundaryDirichlet, vector<Polyline>& boundaryNeumann, vector<Polyline>& displacedBoundaryDirichlet, std::ofstream& boundaryUpdateFile) {
+    vector<Polyline> boundaryDirichletUpdated;
+    vector<Polyline> displacedBoundaryDirichletUpdated;
+    vector<Polyline> boundaryNeumannUpdated;
+    boundaryDirichletUpdated.push_back({});
+    displacedBoundaryDirichletUpdated.push_back({});
+    boundaryNeumannUpdated.push_back({});
+    for (const auto& boundary : {boundaryDirichlet, boundaryNeumann}) {
+        for (const auto& polyline : boundary) {
+            for (const auto& point : polyline) {
             auto it = find_if(crackTips.begin(), crackTips.end(), [&](const auto& entry) {
                 return abs(real(entry.first) - real(point)) < 1e-5 && abs(imag(entry.first) - imag(point)) < 1e-5;
             });
             if (it != crackTips.end()) {
                 auto displacedPoint = crackTips[point].first.first;
-                auto it = find(boundaryDirichlet[0].begin(), boundaryDirichlet[0].end(), point);
-                auto it2 = find(displacedBoundaryDirichlet[0].begin(), displacedBoundaryDirichlet[0].end(), point);
                 Vec2D crackDirection = crackTips[point].second;
                 Vec2D crackDirectionNormalized = crackDirection / length(crackDirection);
                 Vec2D leftCrackPosition;
@@ -323,34 +335,35 @@ void updateDirichletBoundaries(int round, string fileName, map<Vec2D, pair<pair<
                 
                 Vec2D crackTipPosition1 = displacedPoint + rotate90(crackDirectionNormalized) * 0.05;
                 Vec2D crackTipPosition2 = displacedPoint - rotate90(crackDirectionNormalized) * 0.05;
-                Vec2D crackTipPosition = insideDomain(crackTipPosition1, boundaryDirichlet, boundaryNeumann) ? crackTipPosition1 : crackTipPosition2;
+                Vec2D crackTipPosition = insideDomain(crackTipPosition1, displacedBoundaryDirichlet, boundaryNeumann) ? crackTipPosition1 : crackTipPosition2;
                 
-                if (it != boundaryDirichlet[0].end()) {
-                    *it = leftCrackPosition;
-                    boundaryDirichlet[0].insert(it + 1, displacedPoint);   // insert last
-                    auto it_next = find(boundaryDirichlet[0].begin(), boundaryDirichlet[0].end(), displacedPoint);
-                    if (it_next != boundaryDirichlet[0].end()) {
-                        boundaryDirichlet[0].insert(it_next + 1, rightCrackPosition);
-                    }
-                }
-
-                if (it2 != displacedBoundaryDirichlet[0].end()) {
-                    *it2 = leftCrackPosition;
             
-                    displacedBoundaryDirichlet[0].insert(it2 + 1, crackTipPosition); 
-                    auto it_next = find(displacedBoundaryDirichlet[0].begin(), displacedBoundaryDirichlet[0].end(), crackTipPosition);
-                    if (it_next != displacedBoundaryDirichlet[0].end()) {
-                        displacedBoundaryDirichlet[0].insert(it_next + 1, rightCrackPosition);
+                boundaryNeumannUpdated[0].push_back(leftCrackPosition);
+                boundaryNeumannUpdated[0].push_back(crackTipPosition);
+                boundaryNeumannUpdated[0].push_back(rightCrackPosition);
+               
+                boundaryUpdateFile << round << ", " << real(point) << ", " << imag(point) << ", "
+                                     << real(displacedPoint) << ", " << imag(displacedPoint) << ", "
+                                     << real(leftCrackPosition) << ", " << imag(leftCrackPosition) << ", "
+                                     << real(crackTipPosition) << ", " << imag(crackTipPosition) << ", "
+                                     << real(rightCrackPosition) << ", " << imag(rightCrackPosition) << "\n";
+            }
+            else {
+                if (&boundary == &boundaryNeumann) {
+                    boundaryNeumannUpdated[0].push_back(point);
+                } else {
+                    boundaryDirichletUpdated[0].push_back(point);
+                    auto index = &point - &polyline[0];
+                    if (index < displacedBoundaryDirichlet[0].size()) {
+                        displacedBoundaryDirichletUpdated[0].push_back(displacedBoundaryDirichlet[0][index]);
                     }
                 }
-                cout << "Round: " << round << endl;
-                cout << "Crack tip: " << real(point) << ", " << imag(point) << endl;
-                cout << "Displaced point: " << real(displacedPoint) << ", " << imag(displacedPoint) << endl;
-                cout << "Left crack position: " << real(leftCrackPosition) << ", " << imag(leftCrackPosition) << endl;
-                cout << "Crack tip position: " << real(crackTipPosition) << ", " << imag(crackTipPosition) << endl;
-                cout << "Right crack position: " << real(rightCrackPosition) << ", " << imag(rightCrackPosition) << endl;
             }
         }
+    }
+    boundaryDirichlet = boundaryDirichletUpdated;
+    displacedBoundaryDirichlet = displacedBoundaryDirichletUpdated;
+    boundaryNeumann = boundaryNeumannUpdated;
     }
 }
 
@@ -360,7 +373,7 @@ void visualizeBoundaries(const vector<Polyline>& boundaries, const string& filen
         cerr << "Failed to open output file.\n";
         return;
     }
-    file << "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='-1 -1 2 2'>\n";
+    file << "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 2 2'>\n";
     file << "<g fill='none' stroke='black' stroke-width='0.2'>\n";
 
     for (const auto& polyline : boundaries) {
@@ -379,17 +392,18 @@ void visualizeBoundaries(const vector<Polyline>& boundaries, const string& filen
 int main( int argc, char** argv ) {
     string fileName = "dirichletHorizontalStretchNotch";
     std::ofstream crackInformationFile("../fractureOutput/" + fileName + "CrackInfo.csv");
+    std::ofstream boundaryUpdateFile("../fractureOutput/" + fileName + "BoundaryUpdates.csv");
     crackInformationFile << "Round, CrackTipX, CrackTipY, DisplacedX, DisplacedY, DuDx, DuDy, DvDx, DvDy\n";
+    boundaryUpdateFile << "Round, CrackTipX, CrackTipY, DisplacedX, DisplacedY, LeftCrackX, LeftCrackY, CrackTipX, CrackTipY, RightCrackX, RightCrackY\n";
     const string configPath = "../fractureCases/" + fileName + ".json";
     auto boundaryDirichlet = extractBoundaries(configPath, "boundaryDirichlet");
     auto boundaryNeumann = extractBoundaries(configPath, "boundaryNeumann");
     auto displacedBoundaryDirichlet = extractBoundaries(configPath, "displacedBoundaryDirichlet");
 
     int totalRound = 3;
-    for (int count = 0; count < 1; count ++){
+    for (int count = 0; count < totalRound; count ++){
         auto results = findCrackTipsFromBoundaries(count, displacement, boundaryDirichlet, boundaryNeumann, displacedBoundaryDirichlet, 100, 100, 80, crackInformationFile);
-        auto boundaryDirichletReloaded = extractBoundaries(configPath, "boundaryDirichlet");
-        updateDirichletBoundaries(count, fileName, results, boundaryDirichletReloaded, boundaryNeumann, displacedBoundaryDirichlet);
+        updateDirichletBoundaries(count, fileName, results, boundaryDirichlet, boundaryNeumann, displacedBoundaryDirichlet, boundaryUpdateFile);
         visualizeBoundaries(displacedBoundaryDirichlet, "../output/" + fileName + "_round" + to_string(count) + ".svg");
     } 
     // for (auto& result : results) {
