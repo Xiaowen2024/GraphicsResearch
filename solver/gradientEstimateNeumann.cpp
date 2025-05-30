@@ -1,5 +1,5 @@
 
-// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumann.cpp -o gradientEstimateNeumannDebug -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
+// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumann.cpp -o ge -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
 
 #include <algorithm>
 #include <array>
@@ -95,9 +95,9 @@ double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
     return infinity;  // No valid intersection
 }
 
-vector<Polyline> boundaryDirichlet = {{ Vec2D(0.8, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.2, 0) }};
-vector<Polyline> boundaryNeumann = { { Vec2D(0.2, 0), Vec2D(0.5, 0.18), Vec2D(0.5, 0.19), Vec2D(0.8, 0)} };
-vector<Polyline> displacedPoints =  {{  Vec2D(0.8, 0), Vec2D(1.1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(-0.1, 0), Vec2D(0.2, 0)}};
+vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
+vector<Polyline> boundaryNeumann = {{ Vec2D(0, 0), Vec2D(0.49, 0), Vec2D(0.5, 0.2), Vec2D(0.51, 0), Vec2D(1, 0)}};
+vector<Polyline> displacedPoints =  {{ Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0)}};
 
 bool isCloseToNeumannBoundary(Vec2D x0, const vector<Polyline>& boundaryNeumann, double tolerance) {
    for (const auto& polyline : boundaryNeumann) {
@@ -111,6 +111,17 @@ bool isCloseToNeumannBoundary(Vec2D x0, const vector<Polyline>& boundaryNeumann,
    return false;
 }
 
+bool isOnBoundary(Vec2D x0, const vector<Polyline>& boundaries, double tolerance) {
+   for (const auto& polyline : boundaries) {
+      for (size_t i = 0; i < polyline.size() - 1; ++i) {
+         Vec2D closest = closestPoint(x0, polyline[i], polyline[i + 1]);
+         if (length(x0 - closest) <= tolerance) {
+            return true;
+         }
+      }
+   }
+   return false;
+}
 
 Vec2D intersectPolylines(Vec2D x, Vec2D v, double r,
                          const vector<Polyline>& P,
@@ -178,8 +189,6 @@ double silhouetteDistancePolylines( Vec2D x, const vector<Polyline>& P ){
    return d;
 }
 
-
-
 Vec2D solve( Vec2D x0, // evaluation point
    vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
    vector<Polyline> boundaryNeumann, // reflecting part of the boundary
@@ -213,18 +222,18 @@ Vec2D solve( Vec2D x0, // evaluation point
          int steps = 0;
          Vec2D closestPoint;
          do { 
-         auto p = distancePolylines( x, boundaryDirichlet );
-         dDirichlet = p.first;
-         closestPoint = p.second;
-         dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
-         r = max( rMin, min( dDirichlet, dSilhouette ));
-         double theta = random( -M_PI, M_PI );
-         if( onBoundary ) { // sample from a hemisphere around the normal
-            theta = theta/2. + angleOf(n);
-         }
-         Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
-         x =  intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary, onNeumann);
-         steps++;
+            auto p = distancePolylines( x, boundaryDirichlet );
+            dDirichlet = p.first;
+            closestPoint = p.second;
+            dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
+            r = max( rMin, min( dDirichlet, dSilhouette ));
+            double theta = random( -M_PI, M_PI );
+            if( onBoundary ) { // sample from a hemisphere around the normal
+               theta = theta/2. + angleOf(n);
+            }
+            Vec2D v{ cos(theta), sin(theta) }; // unit ray direction
+            x =  intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary, onNeumann);
+            steps++;
          }
          while(dDirichlet > eps && steps < maxSteps);
 
@@ -240,8 +249,6 @@ Vec2D solve( Vec2D x0, // evaluation point
       return Vec2D(sum_x/walker, sum_y/walker);
 }
 
-
-
 vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
               vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
               vector<Polyline> boundaryNeumann, // reflecting part of the boundary
@@ -249,17 +256,14 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    const double eps = 0.000001; // stopping tolerance
    const double rMin = 0.000001; // minimum step size
    int nWalks = 100000;
-   // if (isCloseToNeumannBoundary(x0, boundaryNeumann, 0.1)) {
-   //    nWalks = 1000000;
-   // }
-   const int maxSteps = 65536; // maximum walk length
+   const int maxSteps = 65536; 
    double sum_11 = 0.0; 
    double sum_12 = 0.0;
    double sum_21 = 0.0; 
    double sum_22 = 0.0;
    double sum_x = 0.0;
    double sum_y = 0.0;
-   int i = 0;
+   int i = 0; 
    int walker = 0;
    int countX1 = 0;
    int countY1 = 0;
@@ -285,7 +289,7 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       bool isStarting = true;
       Vec2D normal = Vec2D(0, 0);
       Vec2D firstHitBoundary = Vec2D(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
-      double raidus = 0;
+      double radius = 0;
       do {  
          center = x;
          auto p = distancePolylines( x, boundaryDirichlet );
@@ -293,11 +297,9 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
          closestPoint = p.second;
          dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
          r = max( rMin, min( dDirichlet, dSilhouette ));
-         // sample a random direction on the unit sphere
-         // TODO: see if theta influences the result
          double theta = random( -M_PI, M_PI );
          Vec2D origv{ cos(theta), sin(theta) };
-         if ( onBoundary && onNeumann ) { // sample from a hemisphere around the normal
+         if ( onBoundary ) { // sample from a hemisphere around the normal
             theta = theta/2. + angleOf(n);
             if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
                firstHitBoundary = x;
@@ -308,12 +310,10 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
          if (isStarting){
             isStarting = false;
             normal = origv / length(origv);
-            // TODO: check if radius influences the result
-            // this does change why?
-            raidus = length(x - x0);
+            radius = dDirichlet;
          }
          steps++;
-      } 
+      }  
       while(dDirichlet > eps && steps < maxSteps);
       
       if( steps >= maxSteps ) continue;
@@ -321,15 +321,23 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
          firstHitBoundary = closestPoint;
       }
+      // cout << "---------------------------------" << "\n";
       Vec2D estimated_position = g(closestPoint);
-      Vec2D estimated_displacement = estimated_position - firstHitBoundary;
-      vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
-      estimated_gradient = { Vec2D(2 * 1/raidus * real(estimated_gradient[0]), 2 * 1/raidus * imag(estimated_gradient[0])),
-      Vec2D(2 * 1/raidus * real(estimated_gradient[1]), 2 * 1/raidus * imag(estimated_gradient[1])) };
-     
-      if (isnan(real(estimated_displacement)) || isnan(imag(estimated_displacement))) {
-         continue;
+      // cout << "Estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
+      if (isnan(real(estimated_position)) || isnan(imag(estimated_position))) {
+         cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
+         cout << "Closest point: " << real(closestPoint) << ", " << imag(closestPoint) << "\n";
+         cout << "First hit boundary: " << real(firstHitBoundary) << ", " << imag(firstHitBoundary) << "\n";
       }
+      Vec2D estimated_displacement = estimated_position - firstHitBoundary;
+      if (isnan(real(estimated_displacement)) || isnan(imag(estimated_displacement))) {
+         cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
+         cout << "estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
+         cout << "Estimated displacement: " << real(estimated_displacement) << ", " << imag(estimated_displacement) << "\n";
+      } 
+      vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
+      estimated_gradient = { Vec2D(2 * 1/radius * real(estimated_gradient[0]), 2 * 1/radius * imag(estimated_gradient[0])),
+      Vec2D(2 * 1/radius * real(estimated_gradient[1]), 2 * 1/radius * imag(estimated_gradient[1])) };
       walker += 1;
       sum_11 += real(estimated_gradient[0]);
       sum_12 += imag(estimated_gradient[0]);
@@ -338,10 +346,9 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       sum_x += real(estimated_displacement);
       sum_y += imag(estimated_displacement);
    } 
-
+   
    displacementFile << real(x0) << "," << imag(x0) << ",";
    displacementFile << sum_x /walker  << "," << sum_y/walker << "\n";
-   gradientFile << "X,Y,F11,F12,F21,F22\n";
    gradientFile << real(x0) << "," << imag(x0) << ",";
    gradientFile << sum_11/walker << "," << sum_12/walker << "," << sum_21/walker << "," << sum_22/walker << "\n";
    Vec2D row1 = Vec2D(sum_11/walker, sum_12/walker);
@@ -358,28 +365,31 @@ double signedAngle( Vec2D x, const vector<Polyline>& P )
    return Theta;
 }
 
-Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
-   for (int i = 0; i < originalPoints[0].size() - 1; i++) {
-      Vec2D AP = v - originalPoints[0][i];
-      Vec2D PB = v - originalPoints[0][i + 1];
-      Vec2D AB = originalPoints[0][i + 1] - originalPoints[0][i];
-      Vec2D displaced1 = displacedPoints[0][i]; 
-      Vec2D displaced2 = displacedPoints[0][i + 1];
-
-      if (abs(length(AP) + length(PB) - length(AB)) < num_tol) {
-         Vec2D displaced = displaced1 + (displaced2 - displaced1) * length(AP) / length(AB);
-         return displaced;
-      }
+Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
+   for (int j = 0; j < originalPoints.size(); j++) {
+      const Polyline& polyline = originalPoints[j];
+      const Polyline& displacedPolyline = displacedPoints[j];
+      for (int i = 0; i < polyline.size() - 1; i++) {
+         Vec2D AP = v - polyline[i];
+         Vec2D PB = v - polyline[i + 1];
+         Vec2D AB = polyline[i + 1] - polyline[i];
+         Vec2D displaced1 = displacedPolyline[i]; 
+         Vec2D displaced2 = displacedPolyline[i + 1];
+   
+         if (abs(length(AP) + length(PB) - length(AB)) < num_tol) {
+            Vec2D displaced = displaced1 + (displaced2 - displaced1) * length(AP) / length(AB);
+            return displaced;
+         }
+      }   
    }
-
+   
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    return nan;
 }
 
 Vec2D displacement(Vec2D v) { 
    Vec2D nan = numeric_limits<double>::quiet_NaN();
-
-   Vec2D interpolatedDisplacement = interpolateVec2D_BoundaryPoints(v, boundaryDirichlet, displacedPoints);
+   Vec2D interpolatedDisplacement = interpolateVec2DBoundaryPoints(v, boundaryDirichlet, displacedPoints);
    if (isnan(real(interpolatedDisplacement)) || isnan(imag(interpolatedDisplacement))) {
       return nan;
    }
@@ -439,26 +449,209 @@ string double_to_str(double f) {
    return str;
 }
 
+vector<Vec2D> generatePointsNearNeumannBoundary(Vec2D p1, Vec2D p2, Vec2D p3) {
+   vector<Vec2D> nearbyPoints;
+
+   int samplesPerSegment = 10;
+   double offsetDistance = 0.01;
+
+   // Generate points near segment 1
+   for (int i = 0; i <= samplesPerSegment; ++i) {
+       double t = static_cast<double>(i) / samplesPerSegment;
+       Vec2D point = (1 - t) * p1 + t * p2;
+
+       // Direction vector of the segment
+       Vec2D dir = p2 - p1;
+       // Perpendicular vector (rotate 90 degrees)
+       Vec2D normal(-imag(dir), real(dir));
+       normal /= abs(normal);  // Normalize
+
+       nearbyPoints.push_back(point + offsetDistance * normal);
+       nearbyPoints.push_back(point - offsetDistance * normal);
+   }
+
+   // Generate points near segment 2
+   for (int i = 0; i <= samplesPerSegment; ++i) {
+       double t = static_cast<double>(i) / samplesPerSegment;
+       Vec2D point = (1 - t) * p2 + t * p3;
+
+       Vec2D dir = p3 - p2;
+       Vec2D normal(-imag(dir), real(dir));
+       normal /= abs(normal);
+
+       nearbyPoints.push_back(point + offsetDistance * normal);
+       nearbyPoints.push_back(point - offsetDistance * normal);
+   }
+
+   return nearbyPoints;
+}
+
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_neumann_first_hit_boundary_flat_notch_3";
+   string shape = "gradient_estimate_notch_neumann_stretched_equally_test_nan";
    string fileName = shape; 
    auto deform = displacement;
-
    int s = 16; 
-   std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
-   std::ofstream displacementFile("../output/" + fileName + "_displacement.csv");
-   for( int j = 0; j < s; j++ )
-   {
-      for( int i = 0; i < s; i++ )
-      {
-         Vec2D x0(((double)i / (s - 1)),
-                  ((double)j / (s - 1))
-         );
-         double x = real(x0);
-         double y = imag(x0);
-         if( insideDomain(x0, boundaryDirichlet, boundaryNeumann)){
-            vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-         }
-      } 
+   
+   std::ofstream gradientFile("../variance_check/" + fileName + "_deformation_gradient.csv");
+   std::ofstream displacementFile("../variance_check/" + fileName + "_displacement.csv");
+   gradientFile << "X,Y,F11,F12,F21,F22\n";
+   
+   // for (int j = 0; j < s; j++) {
+   //    for (int i = 0; i < s; i++) {
+   //       Vec2D x0((double)i / (s - 1), (double)j / (s - 1));
+   
+   //       double x = real(x0);
+   //       double y = imag(x0);
+
+   //       if (isOnBoundary(x0, boundaryDirichlet, 1e-8) || 
+   //          isOnBoundary(x0, boundaryNeumann, 1e-8)) {
+   //          continue;
+   //       }
+   //       else { 
+   //          vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+   //       }
+       
+   //       if (j == 1){
+   //          Vec2D x3 = Vec2D(real(x0), 0.01);
+   //          Vec2D x4 = Vec2D(real(x0), 0.021);
+   //          Vec2D x5 = Vec2D(real(x0), 0.041);
+            
+   //          if (insideDomain(x3, boundaryDirichlet, boundaryNeumann)) {
+   //             solveGradient(x3, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+   //          }
+   //          if (insideDomain(x4, boundaryDirichlet, boundaryNeumann)) {
+   //             solveGradient(x4, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+   //          }
+   //          if (insideDomain(x5, boundaryDirichlet, boundaryNeumann)) {
+   //             solveGradient(x5, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+   //          }
+   //       }
+   //    }
+   //    Vec2D x0(0.5,  (double)j / (s - 1));
+   //    if (insideDomain(x0, boundaryDirichlet, boundaryNeumann)) {
+   //       solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+   //    }
+   // } 
+      // vector<Vec2D> customValues;
+      // customValues = generatePointsNearNeumannBoundary(Vec2D(0.2, 0), Vec2D(0.5, 0.2), Vec2D(0.8, 0));
+      // customValues.push_back(Vec2D(0.85, 0.05));
+      // customValues.push_back(Vec2D(0.9, 0.05));
+      // customValues.push_back(Vec2D(0.93, 0.05));
+      // customValues.push_back(Vec2D(0.88, 0.05));
+      // customValues.push_back(Vec2D(0.95, 0.05));
+      // customValues.push_back(Vec2D(0.15, 0.05));
+      // customValues.push_back(Vec2D(0.12, 0.05));
+      // customValues.push_back(Vec2D(0.1, 0.05));
+      // customValues.push_back(Vec2D(0.08, 0.05));
+      // customValues.push_back(Vec2D(0.06, 0.05));
+      // customValues.push_back(Vec2D(0.04, 0.05));
+      // customValues.push_back(Vec2D(0.19, 0.05));
+      // customValues.push_back(Vec2D(0.85, 0.05));
+      // customValues.push_back(Vec2D(0.9, 0.05));
+      // customValues.push_back(Vec2D(0.93, 0.05));
+      // customValues.push_back(Vec2D(0.88, 0.05));
+      // customValues.push_back(Vec2D(0.95, 0.05));
+      // customValues.push_back(Vec2D(0.15, 0.008));
+      // customValues.push_back(Vec2D(0.12, 0.008));
+      // customValues.push_back(Vec2D(0.1, 0.008));
+      // customValues.push_back(Vec2D(0.08, 0.008));
+      // customValues.push_back(Vec2D(0.06, 0.008));
+      // customValues.push_back(Vec2D(0.04, 0.008));
+      // customValues.push_back(Vec2D(0.19, 0.004));
+      // customValues.push_back(Vec2D(0.19, 0.008));
+      // customValues.push_back(Vec2D(0.19, 0.012));
+      // customValues.push_back(Vec2D(0.18, 0.004));
+      // customValues.push_back(Vec2D(0.18, 0.008));
+      // customValues.push_back(Vec2D(0.18, 0.012));
+      // customValues.push_back(Vec2D(0.17, 0.004));
+      // customValues.push_back(Vec2D(0.17, 0.008));
+      // customValues.push_back(Vec2D(0.17, 0.012));
+      // customValues.push_back(Vec2D(0.5, 0.201));
+      // customValues.push_back(Vec2D(0.49, 0.201));
+      // customValues.push_back(Vec2D(0.51, 0.201));
+      // customValues.push_back(Vec2D(0.5, 0.2001));
+      // customValues.push_back(Vec2D(0.49, 0.2001));
+      // customValues.push_back(Vec2D(0.51, 0.2001));
+      // customValues.push_back(Vec2D(0.5, 0.20001));
+      // customValues.push_back(Vec2D(0.49, 0.20001));
+      // customValues.push_back(Vec2D(0.51, 0.20001));
+      // customValues.push_back(Vec2D(0.5, 0.2000001));
+      // customValues.push_back(Vec2D(0.48, 0.001));
+      // customValues.push_back(Vec2D(0.49, 1.001));
+      // customValues.push_back(Vec2D(0.52, 0.001));
+      // customValues.push_back(Vec2D(0.51, 1.001));
+     
+   // for (const auto& polyline : boundaryDirichlet) {
+   //    for (int i = 0; i < polyline.size() - 1; i++) {
+   //       customValues.push_back(polyline[i] + Vec2D(0, 0.1));
+   //       customValues.push_back(polyline[i] + Vec2D(0, 0.01));
+   //       customValues.push_back(polyline[i] + Vec2D(0, 0.001));
+   //       customValues.push_back(polyline[i] + Vec2D(0, 0.0001));
+   //       customValues.push_back(polyline[i] + Vec2D(-0.01, 0));
+   //       customValues.push_back(polyline[i] + Vec2D(-0.001, 0));
+   //       customValues.push_back(polyline[i] + Vec2D(0.01, 0));
+   //       customValues.push_back(polyline[i] + Vec2D(0.001, 0));
+   //    }
+   // }
+   vector<Vec2D> customValues = {
+      {0.48, 0.01},
+      {0.48, 0.015},
+      {0.48, 0.02},
+      {0.485, 0.01},
+      {0.485, 0.015},
+      {0.485, 0.02},
+      {0.49, 0.01},
+      {0.49, 0.015},
+      {0.49, 0.02},
+      {0.49, 0.11},
+      {0.495, 0.11},
+      {0.485, 0.11},
+      {0.505, 0.11},
+      {0.51, 0.11},
+      {0.515, 0.11},
+      {0.506, 0.01},
+      {0.51, 0.01},
+      {0.515, 0.01},
+      {0.52, 0.01},
+      {0.49, 0.021},
+      {0.485,0.021},
+      {0.48, 0.021},
+      {0.506, 0.021},
+      {0.51, 0.021},
+      {0.515, 0.021},
+      {0.52, 0.021},
+      {0.49, 0.04},
+      {0.485, 0.04},
+      {0.48, 0.04},
+      {0.506, 0.04},
+      {0.51, 0.04},
+      {0.515, 0.04},
+      {0.52, 0.04},
+      {0.49901, 0.01},
+      {0.50099, 0.01},
+      {0.49, 0.201}, 
+      {0.495, 0.201}, 
+      {0.498, 0.201}, 
+      {0.502, 0.201}, 
+      {0.5, 0.2005}, 
+      {0.5, 0.201}, 
+      {0.5, 0.2015}, 
+      {0.505, 0.201}, 
+      {0.51, 0.201}, 
+      {0.49, 0.21}, 
+      {0.495, 0.21}, 
+      {0.498, 0.21}, 
+      {0.502, 0.21}, 
+      {0.5, 0.205}, 
+      {0.5, 0.21}, 
+      {0.5, 0.215}, 
+      {0.505, 0.21}, 
+      {0.51, 0.21}
+   };
+
+   for (const auto& point : customValues) {
+      if (insideDomain(point, boundaryDirichlet, boundaryNeumann)) {
+         vector<Vec2D> gradient = solveGradient(point, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      }
    }
 }
