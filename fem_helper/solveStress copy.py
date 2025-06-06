@@ -70,42 +70,14 @@ dofs_right = fem.locate_dofs_geometrical(V, on_right)
 bc_left = fem.dirichletbc(u_bc_left, dofs_left)
 bc_right = fem.dirichletbc(u_bc_right, dofs_right)
 
-u_bc_top = fem.Function(V) 
-u_bc_top.interpolate(lambda x: np.stack((np.array(0.2 * (x[0] - 0.5)), np.zeros_like(x[1]))))
+def on_top(x): return np.isclose(x[1], 1.0)
+dofs_top = fem.locate_dofs_geometrical(V.sub(1), on_top)  # sub(1) → y component
 
-u_bc_bottom_left = fem.Function(V)
-u_bc_bottom_left.interpolate(lambda x: np.stack((0.2 * (x[0] - 0.49), np.zeros_like(x[1]))))
-u_bc_bottom_right = fem.Function(V)
-u_bc_bottom_right.interpolate(lambda x: np.stack((0.2 * (x[0] - 0.51), np.zeros_like(x[1]))))
+zero = fem.Function(fem.functionspace(domain, ("Lagrange", 1)))
+zero.interpolate(lambda x: np.zeros_like(x[0]))
+bc_top = fem.dirichletbc(zero, dofs_top, V.sub(1))  # only constrain u_y
 
-def on_top(x): return x[1] > 1.0 - 1e-6
-def on_bottom_left(x):
-    return (np.abs(x[1]) < 1e-8) & (x[0] <= 0.49) & (x[0] > 0.0)
-
-def on_bottom_right(x):
-    return (np.abs(x[1]) < 1e-8) & (x[0] >= 0.51) & (x[0] < 1.0)
-dofs_top = fem.locate_dofs_geometrical(V, on_top)
-bc_top = fem.dirichletbc(u_bc_top, dofs_top)
-dofs_bottom_left = fem.locate_dofs_geometrical(V, on_bottom_left)
-bc_bottom_left = fem.dirichletbc(u_bc_bottom_left, dofs_bottom_left)
-dofs_bottom_right = fem.locate_dofs_geometrical(V, on_bottom_right)
-bc_bottom_right = fem.dirichletbc(u_bc_bottom_right, dofs_bottom_right)
-bcs = [bc_left, bc_right, bc_top, bc_bottom_left, bc_bottom_right]
-
-# zero_space_element = element("Lagrange", domain.ufl_cell().cellname(), 1, shape=(1,))
-# scalar_zero_space = fem.functionspace(domain, zero_space_element)
-# zero = fem.Function(scalar_zero_space)
-# zero.interpolate(lambda x: np.zeros_like(x[0]))
-
-# # Constrain only u_y (component 1) on top boundary
-# def on_top(x): return np.isclose(x[1], 1.0)
-# scalar_space_element = element("Lagrange", domain.ufl_cell().cellname(), 1, shape=(1,))
-# scalar_space = fem.functionspace(domain, scalar_space_element)
-# dofs_top_y = fem.locate_dofs_geometrical(scalar_space, on_top)
-
-# bc_top_y = fem.dirichletbc(zero, dofs_top_y, V.sub(1))  # only vertical component
-
-# bcs = [bc_left, bc_right, bc_top_y]
+bcs = [bc_left, bc_right, bc_top]
 
 # Assemble system
 A = fem.petsc.assemble_matrix(a_form, bcs=bcs)
@@ -146,16 +118,6 @@ uh.x.scatter_forward()
 u_topology, u_cell_types, u_geometry = plot.vtk_mesh(V)
 u_grid = pyvista.UnstructuredGrid(u_topology, u_cell_types, u_geometry)
 u_values = uh.x.array.real.reshape((u_grid.n_points, -1))
-
-top_mask = np.abs(u_geometry[:, 1] - 1.0) < 1e-6
-bottom_mask = np.abs(u_geometry[:, 1]) < 1e-6
-print("u_y on top boundary:", u_values[top_mask, 1])
-print("u_y on bottom boundary:", u_values[bottom_mask, 1])
-
-# Check min and location
-min_uy_idx = np.argmin(u_values[:, 1])
-print("min u_y:", u_values[min_uy_idx, 1])
-print("at point:", u_geometry[min_uy_idx])
 
 # Compute strain tensor directly from displacement values
 def compute_strain(u_values, points, dim):
@@ -225,32 +187,28 @@ u_grid.point_data["sigma_yy"] = stress_values[:, 1, 1]
 # u_grid.point_data["sigma_xx"] = sigma_xx
 # u_grid.point_data["sigma_yy"] = sigma_yy
 
-mask = u_geometry[:, 1] > 0.15  # or 0.01, depending on your notch depth
-
-# Extract filtered data
-filtered_grid = u_grid.extract_points(mask, adjacent_cells=True)
 
 # Plot u_x
 plotter_ux = pyvista.Plotter(title="u_x")
-plotter_ux.add_mesh(filtered_grid.copy(), scalars="u_x", show_edges=True)
+plotter_ux.add_mesh(u_grid.copy(), scalars="u_x", show_edges=True)
 plotter_ux.view_xy()
 plotter_ux.show()
 
 # Plot u_y
 plotter_uy = pyvista.Plotter(title="u_y")
-plotter_uy.add_mesh(filtered_grid.copy(), scalars="u_y", show_edges=True)
+plotter_uy.add_mesh(u_grid.copy(), scalars="u_y", show_edges=True)
 plotter_uy.view_xy()
 plotter_uy.show()
 
 # Plot σ_xx
 plotter_sigma_xx = pyvista.Plotter(title="Stress σ_xx")
-plotter_sigma_xx.add_mesh(filtered_grid.copy(), scalars="sigma_xx", show_edges=True)
+plotter_sigma_xx.add_mesh(u_grid.copy(), scalars="sigma_xx", show_edges=True)
 plotter_sigma_xx.view_xy()
 plotter_sigma_xx.show()
 
 # Plot σ_yy
 plotter_sigma_yy = pyvista.Plotter(title="Stress σ_yy")
-plotter_sigma_yy.add_mesh(filtered_grid.copy(), scalars="sigma_yy", show_edges=True)
+plotter_sigma_yy.add_mesh(u_grid.copy(), scalars="sigma_yy", show_edges=True)
 plotter_sigma_yy.view_xy()
 plotter_sigma_yy.show()
 

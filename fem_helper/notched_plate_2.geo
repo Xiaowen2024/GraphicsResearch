@@ -2,34 +2,35 @@
 
 // Mesh resolution
 res = 0.01;
+// Points from boundaryDirichlet and boundaryNeumann
+Point(1) = {0.51, 0.0, 1.0};
+Point(2) = {1.0, 0.0, 1.0};
+Point(3) = {1.0, 1.0, 1.0};
+Point(4) = {0.0, 1.0, 1.0};
+Point(5) = {0.0, 0.0, 1.0};
+Point(6) = {0.49, 0.0, 1.0};
+Point(7) = {0.50, 0.2, 1.0}; // Neumann middle point
 
-// Points (bottom boundary with notch - Neumann)
-Point(1) = {0, 0, res};
-Point(2) = {0.49, 0, res};
-Point(3) = {0.5, 0.2, res};    // notch tip
-Point(4) = {0.51, 0, res};
-Point(5) = {1, 0, res};
-
-// Top-left-right boundary (Dirichlet)
-Point(6) = {1, 1, res};
-Point(7) = {0, 1, res};
-
-// Edges (bottom Neumann)
+// BoundaryDirichlet lines
 Line(1) = {1, 2};
 Line(2) = {2, 3};
-Line(3) = {3, 4};
-Line(4) = {4, 5};
+Line(3) = {4, 5};
+Line(4) = {5, 6};
 
-// Edges (Dirichlet)
-Line(5) = {5, 6}; // right
-Line(6) = {6, 7}; // top
-Line(7) = {7, 1}; // left
+// BoundaryNeumann lines
+Line(5) = {6, 7};
+Line(6) = {7, 1};
 
-// Define outer boundary
-Line Loop(1) = {1, 2, 3, 4, 5, 6, 7};
-Plane Surface(1) = {1};
+// Connecting top-left to top-right (assuming closed boundary loop)
+Line(7) = {3, 4};
 
-// Tag boundaries for FEM
-Physical Line("neumann") = {1, 2, 3, 4};
-Physical Line("dirichlet") = {5, 6, 7};
-Physical Surface("domain") = {1};
+// Create Line Loop for surface
+Line Loop(10) = {1, 2, 7, 3, 4, 5, 6};
+
+// Create surface
+Plane Surface(20) = {10};
+
+// Optionally define physical groups for boundary conditions
+Physical Line("Dirichlet") = {1, 2, 3, 4};
+Physical Line("Neumann") = {5, 6, 7};
+Physical Surface("Domain") = {20};
