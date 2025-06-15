@@ -12,12 +12,13 @@ import pyvista
 from dolfinx.plot import vtk_mesh
 
 # Load mesh and boundary tags
-with io.XDMFFile(MPI.COMM_WORLD, "notched_plate_mesh_2.xdmf", "r") as xdmf:
-    domain = xdmf.read_mesh(name="Grid")
-    domain.topology.create_connectivity(domain.topology.dim - 1, domain.topology.dim)
+with io.XDMFFile(MPI.COMM_WORLD, "notched_plate_dirichlet_mesh.xdmf", "r") as xdmf:
+     domain = xdmf.read_mesh(name="Grid")
+     domain.topology.create_entities(1)
 
-with io.XDMFFile(MPI.COMM_WORLD, "notched_plate_facet_region_2.xdmf", "r") as xdmf:
+with io.XDMFFile(MPI.COMM_WORLD, "notched_plate_dirichlet_facet_region.xdmf", "r") as xdmf:
     facet_tags = xdmf.read_meshtags(domain, name="Grid")
+
 
 # Define vector function space
 dim = domain.geometry.dim
@@ -37,16 +38,6 @@ def epsilon(u):
 def sigma(u):
     return lmbda * ufl.tr(epsilon(u)) * ufl.Identity(dim) + 2 * mu * epsilon(u)
 
-# Dirichlet BC on top boundary (tag 2)
-# dirichlet_id = 2
-# u_D = Function(V)
-# u_D.interpolate(lambda x: np.stack([0.1 * (x[0] - 0.5), np.zeros_like(x[1])]) if dim == 2 else
-#                             np.stack([0.1 * (x[0] - 0.5), np.zeros_like(x[1]), np.zeros_like(x[2])]))
-# facets = np.where(facet_tags.values == dirichlet_id)[0]
-# dofs = locate_dofs_topological(V, domain.topology.dim - 1, facet_tags.indices[facets])
-# bc = dirichletbc(u_D, dofs)
-
-# Variational problem
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
 a = ufl.inner(sigma(u), epsilon(v)) * dx
@@ -70,13 +61,13 @@ dofs_right = fem.locate_dofs_geometrical(V, on_right)
 bc_left = fem.dirichletbc(u_bc_left, dofs_left)
 bc_right = fem.dirichletbc(u_bc_right, dofs_right)
 
-u_bc_top = fem.Function(V) 
-u_bc_top.interpolate(lambda x: np.stack((np.array(0.2 * (x[0] - 0.5)), np.zeros_like(x[1]))))
+# u_bc_top = fem.Function(V) 
+# u_bc_top.interpolate(lambda x: np.stack((np.array(0.2 * (x[0] - 0.5)), np.zeros_like(x[1]))))
 
-u_bc_bottom_left = fem.Function(V)
-u_bc_bottom_left.interpolate(lambda x: np.stack((0.2 * (x[0] - 0.49), np.zeros_like(x[1]))))
-u_bc_bottom_right = fem.Function(V)
-u_bc_bottom_right.interpolate(lambda x: np.stack((0.2 * (x[0] - 0.51), np.zeros_like(x[1]))))
+# u_bc_bottom_left = fem.Function(V)
+# u_bc_bottom_left.interpolate(lambda x: np.stack((0.2 * (x[0] - 0.49), np.zeros_like(x[1]))))
+# u_bc_bottom_right = fem.Function(V)
+# u_bc_bottom_right.interpolate(lambda x: np.stack((0.2 * (x[0] - 0.51), np.zeros_like(x[1]))))
 
 def on_top(x): return x[1] > 1.0 - 1e-6
 def on_bottom_left(x):
@@ -85,27 +76,12 @@ def on_bottom_left(x):
 def on_bottom_right(x):
     return (np.abs(x[1]) < 1e-8) & (x[0] >= 0.51) & (x[0] < 1.0)
 dofs_top = fem.locate_dofs_geometrical(V, on_top)
-bc_top = fem.dirichletbc(u_bc_top, dofs_top)
-dofs_bottom_left = fem.locate_dofs_geometrical(V, on_bottom_left)
-bc_bottom_left = fem.dirichletbc(u_bc_bottom_left, dofs_bottom_left)
-dofs_bottom_right = fem.locate_dofs_geometrical(V, on_bottom_right)
-bc_bottom_right = fem.dirichletbc(u_bc_bottom_right, dofs_bottom_right)
-bcs = [bc_left, bc_right, bc_top, bc_bottom_left, bc_bottom_right]
-
-# zero_space_element = element("Lagrange", domain.ufl_cell().cellname(), 1, shape=(1,))
-# scalar_zero_space = fem.functionspace(domain, zero_space_element)
-# zero = fem.Function(scalar_zero_space)
-# zero.interpolate(lambda x: np.zeros_like(x[0]))
-
-# # Constrain only u_y (component 1) on top boundary
-# def on_top(x): return np.isclose(x[1], 1.0)
-# scalar_space_element = element("Lagrange", domain.ufl_cell().cellname(), 1, shape=(1,))
-# scalar_space = fem.functionspace(domain, scalar_space_element)
-# dofs_top_y = fem.locate_dofs_geometrical(scalar_space, on_top)
-
-# bc_top_y = fem.dirichletbc(zero, dofs_top_y, V.sub(1))  # only vertical component
-
-# bcs = [bc_left, bc_right, bc_top_y]
+# bc_top = fem.dirichletbc(u_bc_top, dofs_top)
+# dofs_bottom_left = fem.locate_dofs_geometrical(V, on_bottom_left)
+# bc_bottom_left = fem.dirichletbc(u_bc_bottom_left, dofs_bottom_left)
+# dofs_bottom_right = fem.locate_dofs_geometrical(V, on_bottom_right)
+# bc_bottom_right = fem.dirichletbc(u_bc_bottom_right, dofs_bottom_right)
+bcs = [bc_left, bc_right]
 
 # Assemble system
 A = fem.petsc.assemble_matrix(a_form, bcs=bcs)
@@ -131,17 +107,6 @@ ksp.setType(PETSc.KSP.Type.CG)
 ksp.getPC().setType(PETSc.PC.Type.HYPRE)
 ksp.solve(b, uh.x.petsc_vec)
 uh.x.scatter_forward()
-# uh.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-
-# el1 = element("Lagrange", domain.ufl_cell().cellname(), 1, shape=(2,))
-# V1 = fem.functionspace(domain, el1)
-# uh_out = fem.Function(V1)
-# uh_out.interpolate(uh)
-
-# # Save mesh and interpolated function
-# with io.XDMFFile(domain.comm, "displacement.xdmf", "w") as xdmf:
-#     xdmf.write_mesh(domain)
-#     xdmf.write_function(uh_out)
 
 u_topology, u_cell_types, u_geometry = plot.vtk_mesh(V)
 u_grid = pyvista.UnstructuredGrid(u_topology, u_cell_types, u_geometry)
@@ -149,13 +114,6 @@ u_values = uh.x.array.real.reshape((u_grid.n_points, -1))
 
 top_mask = np.abs(u_geometry[:, 1] - 1.0) < 1e-6
 bottom_mask = np.abs(u_geometry[:, 1]) < 1e-6
-print("u_y on top boundary:", u_values[top_mask, 1])
-print("u_y on bottom boundary:", u_values[bottom_mask, 1])
-
-# Check min and location
-min_uy_idx = np.argmin(u_values[:, 1])
-print("min u_y:", u_values[min_uy_idx, 1])
-print("at point:", u_geometry[min_uy_idx])
 
 # Compute strain tensor directly from displacement values
 def compute_strain(u_values, points, dim):
@@ -195,37 +153,7 @@ stress_values = compute_stress(strain_values, lmbda, mu, dim)
 u_grid.point_data["sigma_xx"] = stress_values[:, 0, 0]
 u_grid.point_data["sigma_yy"] = stress_values[:, 1, 1]
 
-# Compute stress tensor at each point
-# elementStress = element("DG", domain.ufl_cell().cellname(), 0, shape=(dim, dim))
-# stress_space = fem.functionspace(domain, elementStress)
-# stress_evaluated = fem.Function(stress_space)
-# stress_expr = fem.Expression(sigma(uh), stress_space.element.interpolation_points())
-# stress_evaluated.interpolate(stress_expr)
-
-# # Extract stress components for visualization
-# stress_values = stress_evaluated.x.array.reshape((-1, dim, dim))
-# print("Stress values shape:", stress_values.shape)
-# sigma_xx = stress_values[:, 0, 0]
-# sigma_yy = stress_values[:, 1, 1]
-
-# # Attach stress components to the grid
-# # Interpolate stress tensor to a point-based function space
-# elementStress = element("CG", domain.ufl_cell().cellname(), 1, shape=(dim, dim))
-# point_stress_space = fem.functionspace(domain, elementStress)
-# point_stress = fem.Function(point_stress_space)
-# point_stress_expr = fem.Expression(sigma(uh), point_stress_space.element.interpolation_points())
-# point_stress.interpolate(point_stress_expr)
-
-# # Extract stress components for visualization
-# point_stress_values = point_stress.x.array.reshape((-1, dim, dim))
-# sigma_xx = point_stress_values[:, 0, 0]
-# sigma_yy = point_stress_values[:, 1, 1]
-
-# # Attach stress components to the grid
-# u_grid.point_data["sigma_xx"] = sigma_xx
-# u_grid.point_data["sigma_yy"] = sigma_yy
-
-mask = u_geometry[:, 1] > 0.15  # or 0.01, depending on your notch depth
+mask = u_geometry[:, 1] > -1  # or 0.01, depending on your notch depth
 
 # Extract filtered data
 filtered_grid = u_grid.extract_points(mask, adjacent_cells=True)
@@ -242,103 +170,12 @@ plotter_uy.add_mesh(filtered_grid.copy(), scalars="u_y", show_edges=True)
 plotter_uy.view_xy()
 plotter_uy.show()
 
-# Plot σ_xx
-plotter_sigma_xx = pyvista.Plotter(title="Stress σ_xx")
-plotter_sigma_xx.add_mesh(filtered_grid.copy(), scalars="sigma_xx", show_edges=True)
-plotter_sigma_xx.view_xy()
-plotter_sigma_xx.show()
-
-# Plot σ_yy
-plotter_sigma_yy = pyvista.Plotter(title="Stress σ_yy")
-plotter_sigma_yy.add_mesh(filtered_grid.copy(), scalars="sigma_yy", show_edges=True)
-plotter_sigma_yy.view_xy()
-plotter_sigma_yy.show()
-
-# --- Compute and visualize principal stress σ₁ (max) ---
-
-# Define stress again (if needed)
-# stressEl = element("DG", domain.ufl_cell().cellname(), 0, shape=(dim, dim))
-# W = fem.functionspace(domain, el)
-# stress = fem.Function(W)
-# S = ufl.TrialFunction(W)
-# T = ufl.TestFunction(W)
-# print("dim =", domain.geometry.dim)     
-# print("cell =", domain.ufl_cell())
-
-# assert S.ufl_shape == (dim, dim), f"Expected (dim, dim), got {S.ufl_shape}"
-
-# # 3. Stress tensor (sigma(uh)) projection
-# a_proj = ufl.inner(S, T) * dx
-# L_proj = ufl.inner(sigma(uh), T) * dx
-
-# # 4. Assemble system
-# A_proj = assemble_matrix(form(a_proj))
-# A_proj.assemble()
-# b_proj = assemble_vector(form(L_proj))
-
-# # 5. Solve linear system
-# solver = PETSc.KSP().create(domain.comm)
-# solver.setOperators(A_proj)
-# solver.setType("cg")
-# solver.getPC().setType("jacobi")
-
-# solver.solve(b_proj, stress.x.petsc_vec)
-# stress.x.scatter_forward() 
-# # Project the stress tensor expression into the space
-# # stress = fem.project(sigma(uh), W)
-
-# # Compute per-cell principal stress (σ₁)
-# stress_values = stress.x.array.reshape((-1, dim * dim))
-# sigma_max_vals = np.zeros(len(stress_values))
-
-# for i, S in enumerate(stress_values):
-#     S_mat = np.array([
-#         [S[0], 0.5 * (S[1] + S[2])],
-#         [0.5 * (S[1] + S[2]), S[3]]
-#     ])
-#     eigvals = np.linalg.eigvalsh(S_mat)
-#     sigma_max_vals[i] = eigvals[1]  # max principal stress
-
-# # Attach to cells
-# tdim = domain.topology.dim
-# domain.topology.create_connectivity(tdim, tdim - 1)
-# topology, cell_types, geometry = plot.vtk_mesh(domain, tdim)
-# grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-# grid.cell_data["sigma_max"] = sigma_max_vals
-
-# # Plot σ₁
-# plotter_sigma = pyvista.Plotter(title="Max Principal Stress σ₁")
-# plotter_sigma.add_mesh(grid.copy(), scalars="sigma_max", show_edges=True)
-# plotter_sigma.view_xy()
-# plotter_sigma.show()
-
-# el0 = element("DG", domain.ufl_cell().cellname(), 0, shape=(dim,dim))
-# W0 = fem.functionspace(domain, el0)
-# expr = fem.Expression(sigma(uh), W0.element.interpolation_points())
-# stress_evaluated = fem.Function(W0)
-# stress_evaluated.interpolate(expr)
-
-# # 9. Extract σ_xx and σ_yy for visualization
-# stress_values = stress_evaluated.x.array.reshape((-1, 2, 2))
-# sigma_xx = stress_values[:, 0, 0]
-# sigma_yy = stress_values[:, 1, 1]
-
-# # 10. Plot stress using PyVista
-# topology, cell_types, geometry = plot.vtk_mesh(W0)
-# grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-# grid.cell_data["sigma_xx"] = sigma_xx
-# grid.cell_data["sigma_yy"] = sigma_yy
-
-# plotter = pyvista.Plotter()
-# plotter.add_mesh(grid, scalars="sigma_xx", show_edges=True)
-# plotter.view_xy()
-# plotter.show()
-
 elementStress = element("DG", domain.ufl_cell().cellname(), 0, shape=(dim, dim))
 W = fem.functionspace(domain, elementStress)
 stress = fem.Function(W)
 
-expr = fem.Expression(sigma(u), W.element.interpolation_points())
+points = W.element.interpolation_points()
+expr = fem.Expression(sigma(uh), points)
 stress.interpolate(expr)
 tdim = domain.topology.dim
 domain.topology.create_connectivity(tdim, 0)
@@ -346,13 +183,83 @@ topology, cell_types, geometry = vtk_mesh(domain, tdim)
 grid = pyvista.UnstructuredGrid(topology, cell_types, domain.geometry.x)
 
 # Attach stress components
-stress_array = stress.x.array.reshape((-1, dim * dim))
+# Interpolate stress to a point-based function space
+elementStressPoint = element("CG", domain.ufl_cell().cellname(), 1, shape=(dim, dim))
+W_point = fem.functionspace(domain, elementStressPoint)
+stress_point = fem.Function(W_point)
+
+# Interpolate stress values
+points = W_point.element.interpolation_points()
+expr_point = fem.Expression(sigma(uh), points)
+stress_point.interpolate(expr_point)
+
+# Attach stress components to the grid
+stress_point_array = stress_point.x.array.reshape((-1, dim, dim))
 for i in range(dim):
     for j in range(dim):
-        component = stress_array[:, i * dim + j]
-        grid.point_data[f"stress_{i}{j}"] = component
+        grid.point_data[f"stress_{i}{j}"] = stress_point_array[:, i, j]
 
 # Plot
 plotter = pyvista.Plotter()
 plotter.add_mesh(grid, scalars="stress_00", show_edges=True)
+plotter.view_xy()  # Set the view to face the straight side
+plotter.show()
+
+stress_fields = {}
+for i in range(dim):
+    for j in range(dim):
+        el_scalar = element("Lagrange", domain.ufl_cell().cellname(), degree=1)
+        W_scalar = fem.functionspace(domain, el_scalar)
+        stress_comp = fem.Function(W_scalar)
+        expr = fem.Expression(ufl.as_tensor(sigma(uh)[i, j]), W_scalar.element.interpolation_points())
+        stress_comp.interpolate(expr)
+        field_name = f"stress_{i}{j}"
+        stress_fields[field_name] = stress_comp.x.array
+        grid.point_data[field_name] = stress_fields[field_name]
+
+# Plot all in a single 2×2 layout (adjust if dim=3)
+plotter = pyvista.Plotter(shape=(2, 2), title="Stress Components")
+component_keys = list(stress_fields.keys())
+
+for idx, name in enumerate(component_keys):
+    plotter.subplot(idx // 2, idx % 2)
+    plotter.add_text(name, font_size=12)
+    plotter.add_mesh(grid.copy(), scalars=name, show_edges=True)
+    plotter.view_xy()
+
+plotter.link_views()  # Optional: synchronize camera
+plotter.show()
+
+elementStressPoint = element("Lagrange", domain.ufl_cell().cellname(), 1, shape=(2, 2))
+W_point = fem.functionspace(domain, elementStressPoint)
+stress_tensor = fem.Function(W_point)
+expr_point = fem.Expression(sigma(uh), W_point.element.interpolation_points())
+stress_tensor.interpolate(expr_point)
+
+# Step 2: Compute principal stresses (eigenvalues)
+stress_array = stress_tensor.x.array.reshape((-1, 2, 2))  # Shape: (npoints, 2, 2)
+principal_stresses = np.linalg.eigvalsh(stress_array)     # Shape: (npoints, 2), sorted ascending
+
+# Step 3: Filter positive principal stresses
+positive_principal_1 = np.maximum(principal_stresses[:, 1], 0)  # Max principal stress
+positive_principal_2 = np.maximum(principal_stresses[:, 0], 0)  # Min principal stress (can be negative)
+
+# Step 4: Add to PyVista grid and plot
+grid.point_data["principal_max"] = positive_principal_1
+grid.point_data["principal_min"] = positive_principal_2
+
+# Visualization
+plotter = pyvista.Plotter(shape=(1, 2), title="Principal Stresses (Positive Only)")
+
+plotter.subplot(0, 0)
+plotter.add_text("Max Principal", font_size=12)
+plotter.add_mesh(grid.copy(), scalars="principal_max", show_edges=True)
+plotter.view_xy()
+
+plotter.subplot(0, 1)
+plotter.add_text("Min Principal (Clipped)", font_size=12)
+plotter.add_mesh(grid.copy(), scalars="principal_min", show_edges=True)
+plotter.view_xy()
+
+plotter.link_views()
 plotter.show()
