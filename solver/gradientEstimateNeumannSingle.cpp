@@ -96,13 +96,31 @@ double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
     return infinity;  // No valid intersection
 }
 
-// vector<Polyline> boundaryDirichlet = {{  Vec2D(0.51, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.49, 0)}};
-// vector<Polyline> boundaryNeumann = {{ Vec2D(0.49, 0), Vec2D(0.48881305812501824, 0.20560378099169374), Vec2D(0.49872435998338754, 0.22564788474996353), Vec2D(0.5088128618749818, 0.20569238100830622), Vec2D(0.51, 0)}};
-// vector<Polyline> displacedPoints =  {{  Vec2D(0.51, 0), Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0), Vec2D(0.49, 0)}};
+double sampleCosineWeightedTheta(std::mt19937 &gen) {
+   std::uniform_real_distribution<double> dist(0.0, 1.0);
+   double u = dist(gen);  // Uniform sample in [0, 1)
+   return std::asin(2.0 * u - 1.0);  // Inverse CDF of cosine-weighted distribution
+}
 
-vector<Polyline> boundaryDirichlet = {{  Vec2D(0.0, 1.0), Vec2D(0, 0)}, {Vec2D(1, 0), Vec2D(1, 1)}};
-vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(0.48, 0), Vec2D(0.5, 0.2), Vec2D(0.52, 0), Vec2D(1, 0)},  {Vec2D(1, 1), Vec2D(0, 1)}};
-vector<Polyline> displacedPoints =  {{  Vec2D(-0.01, 1.0), Vec2D(-0.01, 0)}, {Vec2D(1.01, 0), Vec2D(1.01, 1)}};
+
+Vec2D normalize(const Vec2D& v) {
+   double len = std::abs(v);
+   return len > 0.0 ? v / len : Vec2D(0.0, 0.0);
+}
+
+
+vector<Polyline> boundaryDirichlet = {{  Vec2D(0.51, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.49, 0)}};
+vector<Polyline> boundaryNeumann = {{ Vec2D(0.49, 0), Vec2D(0.48881305812501824, 0.20560378099169374), Vec2D(0.49872435998338754, 0.22564788474996353), Vec2D(0.5088128618749818, 0.20569238100830622), Vec2D(0.51, 0)}};
+vector<Polyline> displacedPoints =  {{  Vec2D(0.51, 0), Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0), Vec2D(0.49, 0)}};
+
+// vector<Polyline> boundaryDirichlet = {{  Vec2D(0.0, 1.0), Vec2D(0, 0)}, {Vec2D(1, 0), Vec2D(1, 1)}};
+// vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(0.48, 0), Vec2D(0.5, 0.2), Vec2D(0.52, 0), Vec2D(1, 0)},  {Vec2D(1, 1), Vec2D(0, 1)}};
+// vector<Polyline> displacedPoints =  {{  Vec2D(-0.01, 1.0), Vec2D(-0.01, 0)}, {Vec2D(1.01, 0), Vec2D(1.01, 1)}};
+
+// vector<Polyline> boundaryDirichlet = {{ Vec2D(0.51, 0), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.49, 0)}};
+// vector<Polyline> boundaryNeumann =  {{ Vec2D(0.49, 0), Vec2D(0.5, 0.2), Vec2D(0.51, 0)}};
+// vector<Polyline> displacedPoints =  {{ Vec2D(0.51, 0), Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0), Vec2D(0.49, 0)}};
+
 bool isCloseToNeumannBoundary(Vec2D x0, const vector<Polyline>& boundaryNeumann, double tolerance) {
    for (const auto& polyline : boundaryNeumann) {
       for (size_t i = 0; i < polyline.size() - 1; ++i) {
@@ -254,33 +272,33 @@ Vec2D solve( Vec2D x0, // evaluation point
 }
 
 vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
-              vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
-              vector<Polyline> boundaryNeumann, // reflecting part of the boundary
-              function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
-   const double eps = 0.000001; // stopping tolerance
-   const double rMin = 0.000001; // minimum step size
-   int nWalks = 100000;
-   const int maxSteps = 65536; 
-   double sum_11 = 0.0; 
-   double sum_12 = 0.0;
-   double sum_21 = 0.0; 
-   double sum_22 = 0.0;
-   double sum_x = 0.0;
-   double sum_y = 0.0;
-   int i = 0; 
-   int walker = 0;
-   int countX1 = 0;
-   int countY1 = 0;
-   int biggerX = 0;
-   int smallerX = 0;
-   int biggerY = 0;
-   int smallerY = 0;
+   vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
+   vector<Polyline> boundaryNeumann, // reflecting part of the boundary
+   function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
+      const double eps = 0.000001; // stopping tolerance
+      const double rMin = 0.000001; // minimum step size
+      int nWalks = 100000;
+      const int maxSteps = 65536; 
+      double sum_11 = 0.0; 
+      double sum_12 = 0.0;
+      double sum_21 = 0.0; 
+      double sum_22 = 0.0;
+      double sum_x = 0.0;
+      double sum_y = 0.0;
+      int i = 0; 
+      int walker = 0;
+      int countX1 = 0;
+      int countY1 = 0;
+      int biggerX = 0;
+      int smallerX = 0;
+      int biggerY = 0;
+      int smallerY = 0;
 
-   #pragma omp parallel for reduction(+:sum)
-   double nextTheta = -1;
-   int count = 0;
-   Vec2D center;
-   for( i = 0; i < nWalks; i++ ) {
+      #pragma omp parallel for reduction(+:sum)
+      double nextTheta = -1;
+      int count = 0;
+      Vec2D center;
+      for( i = 0; i < nWalks; i++ ) {
       std::mt19937 generator(i);  
       std::uniform_real_distribution<double> dist(-M_PI, M_PI);
       Vec2D x = x0; 
@@ -295,49 +313,49 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       Vec2D firstHitBoundary = Vec2D(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
       double radius = 0;
       do {  
-         center = x;
-         auto p = distancePolylines( x, boundaryDirichlet );
-         dDirichlet = p.first;
-         closestPoint = p.second;
-         dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
-         r = max( rMin, min( dDirichlet, dSilhouette ));
-         double theta = random( -M_PI, M_PI );
-         Vec2D origv{ cos(theta), sin(theta) };
-         if ( onBoundary ) { // sample from a hemisphere around the normal
-            theta = theta/2. + angleOf(n);
-            if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
-               firstHitBoundary = x;
-            }
-         }
-         Vec2D v{ cos(theta), sin(theta) };
-         x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary, onNeumann);
-         if (isStarting){
-            isStarting = false;
-            normal = origv / length(origv);
-            radius = dDirichlet;
-         }
-         steps++;
+      center = x;
+      auto p = distancePolylines( x, boundaryDirichlet );
+      dDirichlet = p.first;
+      closestPoint = p.second;
+      dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
+      r = max( rMin, min( dDirichlet, dSilhouette ));
+      double theta = random( -M_PI, M_PI );
+      Vec2D origv{ cos(theta), sin(theta) };
+      if ( onBoundary ) { // sample from a hemisphere around the normal
+      theta = theta/2. + angleOf(n);
+      if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
+         firstHitBoundary = x;
+      }
+      }
+      Vec2D v{ cos(theta), sin(theta) };
+      x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary, onNeumann);
+      if (isStarting){
+      isStarting = false;
+      normal = origv / length(origv);
+      radius = dDirichlet;
+      }
+      steps++;
       }  
       while(dDirichlet > eps && steps < maxSteps);
-      
+
       if( steps >= maxSteps ) continue;
 
       if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
-         firstHitBoundary = closestPoint;
+      firstHitBoundary = closestPoint;
       }
       // cout << "---------------------------------" << "\n";
       Vec2D estimated_position = g(closestPoint);
       // cout << "Estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
       if (isnan(real(estimated_position)) || isnan(imag(estimated_position))) {
-         std::cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
-         std::cout << "Closest point: " << real(closestPoint) << ", " << imag(closestPoint) << "\n";
-         std::cout << "First hit boundary: " << real(firstHitBoundary) << ", " << imag(firstHitBoundary) << "\n";
+      cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
+      cout << "Closest point: " << real(closestPoint) << ", " << imag(closestPoint) << "\n";
+      cout << "First hit boundary: " << real(firstHitBoundary) << ", " << imag(firstHitBoundary) << "\n";
       }
       Vec2D estimated_displacement = estimated_position - firstHitBoundary;
       if (isnan(real(estimated_displacement)) || isnan(imag(estimated_displacement))) {
-         std::cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
-         std::cout << "estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
-         std::cout << "Estimated displacement: " << real(estimated_displacement) << ", " << imag(estimated_displacement) << "\n";
+      cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
+      cout << "estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
+      cout << "Estimated displacement: " << real(estimated_displacement) << ", " << imag(estimated_displacement) << "\n";
       } 
       vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
       estimated_gradient = { Vec2D(2 * 1/radius * real(estimated_gradient[0]), 2 * 1/radius * imag(estimated_gradient[0])),
@@ -349,38 +367,142 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
       sum_22 += imag(estimated_gradient[1]);
       sum_x += real(estimated_displacement);
       sum_y += imag(estimated_displacement);
-   } 
-   
-   displacementFile << real(x0) << "," << imag(x0) << ",";
-   displacementFile << sum_x /walker  << "," << sum_y/walker << "\n";
-   gradientFile << real(x0) << "," << imag(x0) << ",";
-   gradientFile << sum_11/walker << "," << sum_12/walker << "," << sum_21/walker << "," << sum_22/walker << "\n";
-   Vec2D row1 = Vec2D(sum_11/walker, sum_12/walker);
-   Vec2D row2 = Vec2D(sum_21/walker, sum_22/walker);
-   // std:cout << "Displacement: " << real(sum_x/walker) << ", " << imag(sum_y/walker) << "\n";
-   return {row1, row2};
-}
+      } 
 
-double sampleCosineWeightedTheta(std::mt19937 &gen) {
-   std::uniform_real_distribution<double> dist(0.0, 1.0);
-   double u = dist(gen);  // Uniform sample in [0, 1)
-   return std::asin(2.0 * u - 1.0);  // Inverse CDF of cosine-weighted distribution
-}
+      displacementFile << real(x0) << "," << imag(x0) << ",";
+      displacementFile << sum_x /walker  << "," << sum_y/walker << "\n";
+      gradientFile << real(x0) << "," << imag(x0) << ",";
+      gradientFile << sum_11/walker << "," << sum_12/walker << "," << sum_21/walker << "," << sum_22/walker << "\n";
+      Vec2D row1 = Vec2D(sum_11/walker, sum_12/walker);
+      Vec2D row2 = Vec2D(sum_21/walker, sum_22/walker);
+      cout << "displacement: " << real(row1) << ", " << imag(row1) << "\n";
 
-float poissonKernel() {
-   return 1.0f/(4.0f*M_PI);
-}
-
-Vec2D normalize(const Vec2D& v) {
-   double len = std::abs(v);
-   return len > 0.0 ? v / len : Vec2D(0.0, 0.0);
-}
-
-double poissonKernel2D(const Vec2D& normal, const Vec2D& direction) {
-   return std::max(0.0, dot(normalize(normal), normalize(direction))) / M_PI;
+      return {row1, row2};
 }
 
 vector<Vec2D> solveGradientOptimized( Vec2D x0, // evaluation point
+   vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
+   vector<Polyline> boundaryNeumann, // reflecting part of the boundary
+   function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
+      const double eps = 0.000001; // stopping tolerance
+      const double rMin = 0.000001; // minimum step size
+      int nWalks = 100000;
+      const int maxSteps = 65536; 
+      double sum_11 = 0.0; 
+      double sum_12 = 0.0;
+      double sum_21 = 0.0; 
+      double sum_22 = 0.0;
+      double sum_x = 0.0;
+      double sum_y = 0.0;
+      int i = 0; 
+      int walker = 0;
+      int countX1 = 0;
+      int countY1 = 0;
+      int biggerX = 0;
+      int smallerX = 0;
+      int biggerY = 0;
+      int smallerY = 0;
+
+      #pragma omp parallel for reduction(+:sum)
+      double nextTheta = -1;
+      int count = 0;
+      Vec2D center;
+      for( i = 0; i < nWalks/2; i++ ) {
+         double theta;
+         Vec2D v;
+         bool validWalk = false;
+         for (int antitheticIter = 0; antitheticIter < 2; ++antitheticIter) {
+            std::mt19937 generator(i);  
+            std::uniform_real_distribution<double> dist(-M_PI, M_PI);
+            Vec2D x = x0; 
+            Vec2D n{ 0.0, 0.0 }; 
+            bool onBoundary = false; 
+            bool onNeumann = false; 
+            double r, dDirichlet, dSilhouette; 
+            int steps = 0;
+            Vec2D closestPoint;
+            bool isStarting = true;
+            Vec2D normal = Vec2D(0, 0);
+            double throughput = 1.0;
+            Vec2D firstHitBoundary = Vec2D(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
+            double radius = 0;
+            do {  
+            center = x;
+            auto p = distancePolylines( x, boundaryDirichlet );
+            dDirichlet = p.first;
+            closestPoint = p.second;
+            dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
+            r = max( rMin, min( dDirichlet, dSilhouette ));
+            if (antitheticIter == 0) {
+               // theta = sampleCosineWeightedTheta(generator);
+               theta = random( -M_PI, M_PI ); 
+            } else {
+               // Use antithetic sampling to sample the opposite direction
+               theta = M_PI + theta;
+               if (theta > M_PI) theta -= 2 * M_PI;
+            }
+            Vec2D origv{ cos(theta), sin(theta) };
+            if ( onBoundary ) { // sample from a hemisphere around the normal
+            theta = theta/2. + angleOf(n);
+            if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
+               firstHitBoundary = x;
+            }
+            }
+            Vec2D v{ cos(theta), sin(theta) };
+            x = intersectPolylines( x, v, r, boundaryNeumann, n, onBoundary, onNeumann);
+            if (isStarting){
+            isStarting = false;
+            normal = origv / length(origv);
+            radius = dDirichlet;
+            }
+            steps++;
+         }  
+      while(dDirichlet > eps && steps < maxSteps);
+
+      if( steps >= maxSteps ) continue;
+
+      if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
+      firstHitBoundary = closestPoint;
+      }
+      // cout << "---------------------------------" << "\n";
+      Vec2D estimated_position = g(closestPoint);
+      // cout << "Estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
+      if (isnan(real(estimated_position)) || isnan(imag(estimated_position))) {
+      cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
+      cout << "Closest point: " << real(closestPoint) << ", " << imag(closestPoint) << "\n";
+      cout << "First hit boundary: " << real(firstHitBoundary) << ", " << imag(firstHitBoundary) << "\n";
+      }
+      Vec2D estimated_displacement = estimated_position - firstHitBoundary;
+      if (isnan(real(estimated_displacement)) || isnan(imag(estimated_displacement))) {
+      cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
+      cout << "estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
+      cout << "Estimated displacement: " << real(estimated_displacement) << ", " << imag(estimated_displacement) << "\n";
+      } 
+      vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
+      estimated_gradient = { Vec2D(2 * 1/radius * real(estimated_gradient[0]), 2 * 1/radius * imag(estimated_gradient[0])),
+      Vec2D(2 * 1/radius * real(estimated_gradient[1]), 2 * 1/radius * imag(estimated_gradient[1])) };
+      walker += 1;
+      sum_11 += real(estimated_gradient[0]);
+      sum_12 += imag(estimated_gradient[0]);
+      sum_21 += real(estimated_gradient[1]);
+      sum_22 += imag(estimated_gradient[1]);
+      sum_x += real(estimated_displacement);
+      sum_y += imag(estimated_displacement);
+      validWalk = true;
+      }
+      if (validWalk) walker += 2;
+   }
+      displacementFile << real(x0) << "," << imag(x0) << ",";
+      displacementFile << sum_x /walker  << "," << sum_y/walker << "\n";
+      gradientFile << real(x0) << "," << imag(x0) << ",";
+      gradientFile << sum_11/walker << "," << sum_12/walker << "," << sum_21/walker << "," << sum_22/walker << "\n";
+      Vec2D row1 = Vec2D(sum_11/walker, sum_12/walker);
+      Vec2D row2 = Vec2D(sum_21/walker, sum_22/walker);
+      cout << "displacement: " << real(row1) << ", " << imag(row1) << "\n";
+      return {row1, row2};
+}
+
+vector<Vec2D> solveGradientOptimizedArchived( Vec2D x0, // evaluation point
    vector<Polyline> boundaryDirichlet, // absorbing part of the boundary
    vector<Polyline> boundaryNeumann, // reflecting part of the boundary
    function<Vec2D(Vec2D)> g, std::ofstream& displacementFile, std::ofstream& gradientFile) { // Dirichlet boundary values
@@ -427,6 +549,7 @@ vector<Vec2D> solveGradientOptimized( Vec2D x0, // evaluation point
          Vec2D firstHitBoundary = Vec2D(std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::quiet_NaN());
          double radius = 0;
          double boundaryPdf;
+         // throughput *= calcualateThroughput(x, boundaryDirichlet, boundaryNeumann, n, onBoundary, onNeumann);
          do {  
             center = x;
             auto p = distancePolylines( x, boundaryDirichlet );
@@ -435,12 +558,14 @@ vector<Vec2D> solveGradientOptimized( Vec2D x0, // evaluation point
             dSilhouette = silhouetteDistancePolylines( x, boundaryNeumann );
             r = max( rMin, min( dDirichlet, dSilhouette ));
             if (antitheticIter == 0) {
-               theta = sampleCosineWeightedTheta(generator);
+               // theta = sampleCosineWeightedTheta(generator);
             } else {
+               theta = random( -M_PI, M_PI );
                // Use antithetic sampling to sample the opposite direction
                theta = M_PI + theta;
                if (theta > M_PI) theta -= 2 * M_PI;
             }
+            // theta = sampleCosineWeightedTheta(generator);
             Vec2D origv{ cos(theta), sin(theta) };
             if ( onBoundary ) { // sample from a hemisphere around the normal
                theta = theta/2. + angleOf(n);
@@ -465,7 +590,7 @@ vector<Vec2D> solveGradientOptimized( Vec2D x0, // evaluation point
          if (isnan(real(firstHitBoundary)) || isnan(imag(firstHitBoundary))) {
          firstHitBoundary = closestPoint;
          }
-         throughput *= poissonKernel2D(n, v) / boundaryPdf;
+         // cout << "throughput: " << throughput << "\n";
          Vec2D estimated_position = g(closestPoint);
          if (isnan(real(estimated_position)) || isnan(imag(estimated_position))) {
             std::cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
@@ -473,20 +598,26 @@ vector<Vec2D> solveGradientOptimized( Vec2D x0, // evaluation point
             std::cout << "First hit boundary: " << real(firstHitBoundary) << ", " << imag(firstHitBoundary) << "\n";
          }
          Vec2D estimated_displacement = estimated_position - firstHitBoundary;
+         // cout << "Estimated displacement: " << real(estimated_displacement) << ", " << imag(estimated_displacement) << "\n";
+         // cout << "Estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
+         // cout << "First Hit Boundary: " << real(firstHitBoundary) << ", " << imag(firstHitBoundary) << "\n";
          if (isnan(real(estimated_displacement)) || isnan(imag(estimated_displacement))) {
             std::cout << "x0: " << real(x0) << ", " << imag(x0) << "\n";
             std::cout << "estimated position: " << real(estimated_position) << ", " << imag(estimated_position) << "\n";
             std::cout << "Estimated displacement: " << real(estimated_displacement) << ", " << imag(estimated_displacement) << "\n";
          }
+         if (real(firstHitBoundary) - 1 > 1e-5) {
+            cout << "First hit boundary is outside the domain: " << real(firstHitBoundary) << ", " << imag(firstHitBoundary) << "\n";
+         }
          vector<Vec2D> estimated_gradient = multiply(estimated_displacement, normal);
          estimated_gradient = { Vec2D(2 * 1/radius * real(estimated_gradient[0]), 2 * 1/radius * imag(estimated_gradient[0])),
-         Vec2D(2 * 1/radius * real(estimated_gradient[1]), 2 * 1/radius * imag(estimated_gradient[1])) };
-         sum_11 += real(estimated_gradient[0]) * throughput;
-         sum_12 += imag(estimated_gradient[0]) * throughput;
-         sum_21 += real(estimated_gradient[1]) * throughput;
-         sum_22 += imag(estimated_gradient[1]) * throughput;
-         sum_x += real(estimated_displacement) * throughput;
-         sum_y += imag(estimated_displacement) * throughput;
+         Vec2D(2 * 1/radius * real(estimated_gradient[1]), 2 * 1/radius * imag(estimated_gradient[1]))};
+         sum_11 += real(estimated_gradient[0]); //* throughput;
+         sum_12 += imag(estimated_gradient[0]); //* throughput;
+         sum_21 += real(estimated_gradient[1]); //* throughput;
+         sum_22 += imag(estimated_gradient[1]); //* throughput;
+         sum_x += real(estimated_displacement); //* throughput;
+         sum_y += imag(estimated_displacement); //* throughput;
          validWalk = true;
       }
       if (validWalk) walker += 2;
@@ -723,13 +854,13 @@ int main( int argc, char** argv ) {
    // auto boundaryNeumann = extractBoundaries(configPath, "boundaryNeumann");
    // auto displacedBoundaryDirichlet = extractBoundaries(configPath, "displacedBoundaryDirichlet");
   
-   vector<Vec2D> gradient = solveGradientOptimized(Vec2D(0.475,0.01), boundaryDirichlet, boundaryNeumann, displacement, displacementFile, gradientFile);
+   vector<Vec2D> gradient = solveGradient(Vec2D(0.515,0.01), boundaryDirichlet, boundaryNeumann, displacement, displacementFile, gradientFile);
    vector<Vec2D> strain = calculateStrain(gradient);
    vector<Vec2D> stressTensor = getStress(lmbda, mu, real(strain[0]) + imag(strain[1]), real(strain[0]), imag(strain[0]), real(strain[1]), imag(strain[1]));
    vector<pair<double, Vec2D>> stressDecomposed = eigenDecomposition(stressTensor);
    double coarseStress = abs(stressDecomposed[0].first);
    cout << "Coarse stress: " << coarseStress << "\n";
    Vec2D coarseDirection = stressDecomposed[0].second; 
-   bool result = insideDomain(Vec2D(0.39, 0.01), boundaryDirichlet, boundaryNeumann);
+   bool result = insideDomain(Vec2D(0.515, 0.01), boundaryDirichlet, boundaryNeumann);
    cout << "Inside domain: " << result << "\n";
 }
