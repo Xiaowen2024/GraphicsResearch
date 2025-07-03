@@ -1,5 +1,5 @@
 
-// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateNeumann.cpp -o ge -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
+// c++ -std=c++17 -O3 gradientEstimateNeumann.cpp -o ge -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
 
 #include <algorithm>
 #include <array>
@@ -95,9 +95,21 @@ double rayIntersection(Vec2D x, Vec2D v, Vec2D a, Vec2D b) {
     return infinity;  // No valid intersection
 }
 
-vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
-vector<Polyline> boundaryNeumann = {{ Vec2D(0, 0), Vec2D(0.49, 0), Vec2D(0.5, 0.2), Vec2D(0.51, 0), Vec2D(1, 0)}};
-vector<Polyline> displacedPoints =  {{ Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0)}};
+// vector<Polyline> boundaryDirichlet = {{  Vec2D(0.3, 1), Vec2D(0, 1)}};
+// vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.3, 0), Vec2D(0.3, 1)}};
+// vector<Polyline> displacedPoints =  {{  Vec2D(0.4, 1), Vec2D(-0.1, 1)}};
+
+vector<Polyline> boundaryDirichlet = {{  Vec2D(0, 1), Vec2D(0, 0)}, {Vec2D(0.3, 0), Vec2D(0.3, 1)}};
+vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(0.3, 0)}, { Vec2D(0.3, 1), Vec2D(0, 1)} };
+vector<Polyline> displacedPoints =  {{  Vec2D(-0.1, 1.0), Vec2D(-0.1, 0)}, {Vec2D(0.4, 0), Vec2D(0.4, 1)}};
+
+// vector<Polyline> boundaryDirichlet = {{  Vec2D(0.0, 1.0), Vec2D(0, 0)}, {Vec2D(0.2, 0), Vec2D(0.2, 1)}};
+// vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(0.2, 0)},  {Vec2D(0.2, 1), Vec2D(0, 1)}};
+// vector<Polyline> displacedPoints =  {{  Vec2D(-0.1, 1.0), Vec2D(-0.1, 0)}, {Vec2D(0.3, 0), Vec2D(0.3, 1)}};
+
+// vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
+// vector<Polyline> boundaryNeumann = {{ Vec2D(0, 0), Vec2D(0.49, 0), Vec2D(0.5, 0.2), Vec2D(0.51, 0), Vec2D(1, 0)}};
+// vector<Polyline> displacedPoints =  {{ Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1), Vec2D(-0.1, 0)}};
 
 bool isCloseToNeumannBoundary(Vec2D x0, const vector<Polyline>& boundaryNeumann, double tolerance) {
    for (const auto& polyline : boundaryNeumann) {
@@ -487,54 +499,117 @@ vector<Vec2D> generatePointsNearNeumannBoundary(Vec2D p1, Vec2D p2, Vec2D p3) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "gradient_estimate_notch_neumann_stretched_equally_test_nan";
+   string shape = "gradient_estimate_dirichlet_without_notch_0.3";
    string fileName = shape; 
    auto deform = displacement;
    int s = 16; 
    
-   std::ofstream gradientFile("../variance_check/" + fileName + "_deformation_gradient.csv");
-   std::ofstream displacementFile("../variance_check/" + fileName + "_displacement.csv");
+   std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
+   std::ofstream displacementFile("../output/" + fileName + "_displacement.csv");
    gradientFile << "X,Y,F11,F12,F21,F22\n";
    
-   // for (int j = 0; j < s; j++) {
-   //    for (int i = 0; i < s; i++) {
-   //       Vec2D x0((double)i / (s - 1), (double)j / (s - 1));
+   for (int j = 0; j < (s - 1) ; j+= 1) {
+      for (int i = 0; i < (s - 1); i+= 1) {
+         Vec2D x0((double)i / (s - 1), (double)j / (s - 1));
    
-   //       double x = real(x0);
-   //       double y = imag(x0);
+         double x = real(x0);
+         double y = imag(x0);
 
-   //       if (isOnBoundary(x0, boundaryDirichlet, 1e-8) || 
-   //          isOnBoundary(x0, boundaryNeumann, 1e-8)) {
-   //          continue;
-   //       }
-   //       else { 
-   //          vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-   //       }
+         if (isOnBoundary(x0, boundaryDirichlet, 1e-8) || 
+            isOnBoundary(x0, boundaryNeumann, 1e-8)) {
+            continue;
+         }
+         else { 
+            vector<Vec2D> gradient = solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+         }
        
-   //       if (j == 1){
-   //          Vec2D x3 = Vec2D(real(x0), 0.01);
-   //          Vec2D x4 = Vec2D(real(x0), 0.021);
-   //          Vec2D x5 = Vec2D(real(x0), 0.041);
+         if (j == 0){
+            Vec2D x1 = Vec2D(real(x0), 0.01);
+            Vec2D x2 = Vec2D(real(x0), 0.041);
+            Vec2D x3 = Vec2D(real(x0), 0.081);
+            Vec2D x4 = Vec2D(real(x0), 0.99);
+            Vec2D x5 = Vec2D(real(x0), 0.959);
+            Vec2D x6 = Vec2D(real(x0), 0.919);
+            if (insideDomain(x1, boundaryDirichlet, boundaryNeumann)) {
+               solveGradient(x1, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+            }
+            if (insideDomain(x2, boundaryDirichlet, boundaryNeumann)) {
+               solveGradient(x2, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+            }
+            if (insideDomain(x3, boundaryDirichlet, boundaryNeumann)) {
+               solveGradient(x3, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+            }
             
-   //          if (insideDomain(x3, boundaryDirichlet, boundaryNeumann)) {
-   //             solveGradient(x3, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-   //          }
-   //          if (insideDomain(x4, boundaryDirichlet, boundaryNeumann)) {
-   //             solveGradient(x4, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-   //          }
-   //          if (insideDomain(x5, boundaryDirichlet, boundaryNeumann)) {
-   //             solveGradient(x5, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-   //          }
-   //       }
-   //    }
-   //    Vec2D x0(0.5,  (double)j / (s - 1));
-   //    if (insideDomain(x0, boundaryDirichlet, boundaryNeumann)) {
-   //       solveGradient(x0, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-   //    }
-   // } 
+            if (insideDomain(x4, boundaryDirichlet, boundaryNeumann)) {
+               solveGradient(x4, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+            }
+            if (insideDomain(x5, boundaryDirichlet, boundaryNeumann)) {
+               solveGradient(x5, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+            }
+            if (insideDomain(x6, boundaryDirichlet, boundaryNeumann)) {
+               solveGradient(x6, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+            }
+         }
+      }
+      
+      Vec2D p1(0.1,  (double)j / (s - 1));
+      Vec2D p2(0.01,  (double)j / (s - 1));
+      Vec2D p3(0.99,  (double)j / (s - 1));
+      Vec2D p4(0.9,  (double)j / (s - 1));
+      if (insideDomain(p1, boundaryDirichlet, boundaryNeumann)) {
+         solveGradient(p1, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      }
+      if (insideDomain(p2, boundaryDirichlet, boundaryNeumann)) {
+         solveGradient(p2, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      }
+      if (insideDomain(p3, boundaryDirichlet, boundaryNeumann)) {
+         solveGradient(p3, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      }
+      if (insideDomain(p4, boundaryDirichlet, boundaryNeumann)) {
+         solveGradient(p4, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      }
+   }
+      // if (insideDomain(p5, boundaryDirichlet, boundaryNeumann)) {
+      //    solveGradient(p5, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      // }
+      // if (insideDomain(p6, boundaryDirichlet, boundaryNeumann)) {
+      //    solveGradient(p6, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      // }
+      // if (insideDomain(p7, boundaryDirichlet, boundaryNeumann)) {
+      //    solveGradient(p7, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      // }
+
       // vector<Vec2D> customValues;
-      // customValues = generatePointsNearNeumannBoundary(Vec2D(0.2, 0), Vec2D(0.5, 0.2), Vec2D(0.8, 0));
-      // customValues.push_back(Vec2D(0.85, 0.05));
+      // customValues.push_back(Vec2D(0.01, 0.01));
+      // customValues.push_back(Vec2D(0.01, 0.99));
+      // customValues.push_back(Vec2D(0.19, 0.01));
+      // customValues.push_back(Vec2D(0.19, 0.99));
+      // customValues = generatePointsNearNeumannBoundary(Vec2D(0.48, 0), Vec2D(0.5, 0.2), Vec2D(0.52, 0));
+      // customValues.push_back(Vec2D(0.5, 0.21));
+      // customValues.push_back(Vec2D(0.49, 0.2));
+      // customValues.push_back(Vec2D(0.51, 0.2));
+      // customValues.push_back(Vec2D(0.01, 0.01));
+      // customValues.push_back(Vec2D(0.05, 0.01));
+      // customValues.push_back(Vec2D(0.05, 0.05));
+      // customValues.push_back(Vec2D(0.01, 0.05));
+      // customValues.push_back(Vec2D(0.99, 0.01));
+      // customValues.push_back(Vec2D(0.99, 0.05));
+      // customValues.push_back(Vec2D(0.95, 0.01));
+      // customValues.push_back(Vec2D(0.95, 0.05));
+      // customValues.push_back(Vec2D(0.99, 0.99));
+      // customValues.push_back(Vec2D(0.99, 0.95));
+      // customValues.push_back(Vec2D(0.95, 0.99));
+      // customValues.push_back(Vec2D(0.95, 0.95));
+      // customValues.push_back(Vec2D(0.01, 0.99));
+      // customValues.push_back(Vec2D(0.05, 0.99));
+      // customValues.push_back(Vec2D(0.01, 0.95));
+      // customValues.push_back(Vec2D(0.05, 0.95));
+      // customValues.push_back(Vec2D(0.475, 0.01));
+      // customValues.push_back(Vec2D(0.47, 0.01));
+      // customValues.push_back(Vec2D(0.465, 0.01));
+      // customValues.push_back(Vec2D(0.525, 0.01));
+      // customValues.push_back(Vec2D(0.53, 0.01));
+      // customValues.push_back(Vec2D(0.535, 0.01));
       // customValues.push_back(Vec2D(0.9, 0.05));
       // customValues.push_back(Vec2D(0.93, 0.05));
       // customValues.push_back(Vec2D(0.88, 0.05));
@@ -593,65 +668,67 @@ int main( int argc, char** argv ) {
    //       customValues.push_back(polyline[i] + Vec2D(0.001, 0));
    //    }
    // }
-   vector<Vec2D> customValues = {
-      {0.48, 0.01},
-      {0.48, 0.015},
-      {0.48, 0.02},
-      {0.485, 0.01},
-      {0.485, 0.015},
-      {0.485, 0.02},
-      {0.49, 0.01},
-      {0.49, 0.015},
-      {0.49, 0.02},
-      {0.49, 0.11},
-      {0.495, 0.11},
-      {0.485, 0.11},
-      {0.505, 0.11},
-      {0.51, 0.11},
-      {0.515, 0.11},
-      {0.506, 0.01},
-      {0.51, 0.01},
-      {0.515, 0.01},
-      {0.52, 0.01},
-      {0.49, 0.021},
-      {0.485,0.021},
-      {0.48, 0.021},
-      {0.506, 0.021},
-      {0.51, 0.021},
-      {0.515, 0.021},
-      {0.52, 0.021},
-      {0.49, 0.04},
-      {0.485, 0.04},
-      {0.48, 0.04},
-      {0.506, 0.04},
-      {0.51, 0.04},
-      {0.515, 0.04},
-      {0.52, 0.04},
-      {0.49901, 0.01},
-      {0.50099, 0.01},
-      {0.49, 0.201}, 
-      {0.495, 0.201}, 
-      {0.498, 0.201}, 
-      {0.502, 0.201}, 
-      {0.5, 0.2005}, 
-      {0.5, 0.201}, 
-      {0.5, 0.2015}, 
-      {0.505, 0.201}, 
-      {0.51, 0.201}, 
-      {0.49, 0.21}, 
-      {0.495, 0.21}, 
-      {0.498, 0.21}, 
-      {0.502, 0.21}, 
-      {0.5, 0.205}, 
-      {0.5, 0.21}, 
-      {0.5, 0.215}, 
-      {0.505, 0.21}, 
-      {0.51, 0.21}
-   };
+   // vector<Vec2D> more = {
+   //    {0.48, 0.01},
+   //    {0.48, 0.015},
+   //    {0.48, 0.02},
+   //    {0.485, 0.01},
+   //    {0.485, 0.015},
+   //    {0.485, 0.02},
+   //    {0.49, 0.01},
+   //    {0.49, 0.015},
+   //    {0.49, 0.02},
+   //    {0.49, 0.11},
+   //    {0.495, 0.11},
+   //    {0.485, 0.11},
+   //    {0.505, 0.11},
+   //    {0.51, 0.11},
+   //    {0.515, 0.11},
+   //    {0.506, 0.01},
+   //    {0.51, 0.01},
+   //    {0.515, 0.01},
+   //    {0.52, 0.01},
+   //    {0.49, 0.021},
+   //    {0.485,0.021},
+   //    {0.48, 0.021},
+   //    {0.506, 0.021},
+   //    {0.51, 0.021},
+   //    {0.515, 0.021},
+   //    {0.52, 0.021},
+   //    {0.49, 0.04},
+   //    {0.485, 0.04},
+   //    {0.48, 0.04},
+   //    {0.506, 0.04},
+   //    {0.51, 0.04},
+   //    {0.515, 0.04},
+   //    {0.52, 0.04},
+   //    {0.49901, 0.01},
+   //    {0.50099, 0.01},
+   //    {0.49, 0.201}, 
+   //    {0.495, 0.201}, 
+   //    {0.498, 0.201}, 
+   //    {0.502, 0.201}, 
+   //    {0.5, 0.2005}, 
+   //    {0.5, 0.201}, 
+   //    {0.5, 0.2015}, 
+   //    {0.505, 0.201}, 
+   //    {0.51, 0.201}, 
+   //    {0.49, 0.21}, 
+   //    {0.495, 0.21}, 
+   //    {0.498, 0.21}, 
+   //    {0.502, 0.21}, 
+   //    {0.5, 0.205}, 
+   //    {0.5, 0.21}, 
+   //    {0.5, 0.215}, 
+   //    {0.505, 0.21}, 
+   //    {0.51, 0.21}
+   // };
+   // customValues.insert(customValues.end(), more.begin(), more.end());
 
-   for (const auto& point : customValues) {
-      if (insideDomain(point, boundaryDirichlet, boundaryNeumann)) {
-         vector<Vec2D> gradient = solveGradient(point, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
-      }
-   }
+      // for (const auto& point : customValues) {
+      //    if (insideDomain(point, boundaryDirichlet, boundaryNeumann)) {
+      //       vector<Vec2D> gradient = solveGradient(point, boundaryDirichlet, boundaryNeumann, deform, displacementFile, gradientFile);
+      //    }
+      // }
+   // }
 }
