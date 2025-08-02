@@ -24,6 +24,19 @@ std::uniform_real_distribution<double> dist(-M_PI, M_PI);
 // use std::complex to implement 2D vectors
 using Vec2D = complex<double>;
 
+// Overload operator* for scalar multiplication with Vec2D
+inline Vec2D operator*(double scalar, const Vec2D& vec) {
+    return Vec2D(scalar * real(vec), scalar * imag(vec));
+}
+
+inline vector<Vec2D> operator*(double scalar, const vector<Vec2D>& vec) {
+   vector<Vec2D> result;
+   for (const auto& v : vec) {
+      result.push_back(scalar * v);
+   }
+   return result;
+}
+
 pair<Vec2D, double> sampleNeumannBoundary() {
    // Sample a point on the Neumann boundary and return its PDF
    static std::random_device rd;   // Seed generator (non-deterministic)
@@ -45,7 +58,7 @@ pair<Vec2D, double> sampleNeumannBoundary() {
 
 using Polyline = vector<Vec2D>;
 
-Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
+Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-3) { 
    for (int j = 0; j < originalPoints.size(); j++) {
       const Polyline& polyline = originalPoints[j];
       const Polyline& displacedPolyline = displacedPoints[j];
@@ -66,6 +79,58 @@ Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, v
    Vec2D nan = numeric_limits<double>::quiet_NaN();
    return nan;
 }
+Vec2D sampleRectangleBoundary() {
+   // Define the rectangle's properties (unit square from 0,0 to 1,1)
+   double min_x = 0.0;
+   double min_y = 0.0;
+   double max_x = 1.0;
+   double max_y = 1.0;
+
+   // Calculate the lengths of the sides
+   double width = max_x - min_x;
+   double height = max_y - min_y;
+
+   // Calculate the total perimeter
+   double perimeter = 2 * (width + height);
+
+   // Initialize random number generator
+   // std::random_device provides a non-deterministic seed
+   std::random_device rd;
+   // std::mt19937 is a Mersenne Twister pseudo-random number generator
+   std::mt19937 gen(rd());
+   // std::uniform_real_distribution generates uniformly distributed real numbers
+   // in the range [0, perimeter)
+   std::uniform_real_distribution<> distrib(0.0, perimeter);
+
+   // Generate a random distance along the perimeter
+   double random_distance = distrib(gen);
+
+   double x, y;
+
+   // Determine which side the point falls on and calculate its coordinates
+   // Side 1: Bottom edge (from (0,0) to (1,0))
+   if (random_distance < width) {
+       x = min_x + random_distance;
+       y = min_y;
+   }
+   // Side 2: Right edge (from (1,0) to (1,1))
+   else if (random_distance < width + height) {
+       x = max_x;
+       y = min_y + (random_distance - width);
+   }
+   // Side 3: Top edge (from (1,1) to (0,1))
+   else if (random_distance < 2 * width + height) {
+       x = max_x - (random_distance - (width + height));
+       y = max_y;
+   }
+   // Side 4: Left edge (from (0,1) to (0,0))
+   else {
+       x = min_x;
+       y = max_y - (random_distance - (2 * width + height));
+   }
+
+   return Vec2D{x, y};
+}
 
 // vector<Polyline> boundaryDirichlet = {{ Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1), Vec2D(0, 0)}};
 // vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(0.49, 0), Vec2D(0.5, 0.2), Vec2D(0.51, 0), Vec2D(1, 0)}};
@@ -79,9 +144,9 @@ Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, v
 // vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(0.2, 0)}, { Vec2D(0.2, 1), Vec2D(0, 1)} };
 // vector<Polyline> displacedPoints =  {{  Vec2D(-0.1, 1.0), Vec2D(-0.1, 0)}, {Vec2D(0.3, 0), Vec2D(0.3, 1)}};
 
-vector<Polyline> boundaryDirichlet = {{  Vec2D(0, 1), Vec2D(0, 0), Vec2D(0.5, 0.2), Vec2D(1, 0), Vec2D(1, 1), Vec2D(0, 1)}};
-vector<Polyline> boundaryNeumann =  {};
-vector<Polyline> displacedPoints =  {{  Vec2D(-0.1, 1), Vec2D(-0.1, 0), Vec2D(0.5, 0.2), Vec2D(1.1, 0), Vec2D(1.1, 1), Vec2D(-0.1, 1)}};
+vector<Polyline> boundaryDirichlet = {{ Vec2D(0, 1), Vec2D(0, 0)}, { Vec2D(1, 0), Vec2D(1, 1)}};
+vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(1, 0)}, { Vec2D(1, 1), Vec2D(0, 1)}};
+vector<Polyline> displacedPoints =  {{  Vec2D(-0.1, 1), Vec2D(-0.1, 0)}, { Vec2D(1.1, 0), Vec2D(1.1, 1)}};
 
 bool isPointOnLine(Vec2D point, Vec2D lineStart, Vec2D lineEnd, double tolerance = 1e-5) {
    Vec2D AP = point - lineStart;
@@ -102,6 +167,20 @@ Vec2D getDirichletValue(Vec2D v, vector<Polyline> boundaryDirichlet, vector<Poly
       Vec2D nan = numeric_limits<double>::quiet_NaN();
       return nan;
    }
+}
+
+bool isOnDirichlet(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann) {
+   const double tolerance = 1e-4; // Define a small tolerance for comparison
+   for (const auto& polyline : boundaryDirichlet) {
+      for (size_t i = 0; i < polyline.size() - 1; ++i) {
+         Vec2D lineStart = polyline[i];
+         Vec2D lineEnd = polyline[i + 1];
+         if (isPointOnLine(point, lineStart, lineEnd, tolerance)) {
+            return true;
+         }
+      }
+   }
+   return false;
 }
 
 vector<Vec2D> getNormal(Vec2D point) { 
@@ -134,16 +213,12 @@ vector<Vec2D> getNormal(Vec2D point) {
       Vec2D normal = Vec2D(imag(lineDirection), -real(lineDirection));
       normals.push_back(normal);
    }
-   else {
-      // If no conditions are met, return NaN
-      return {};
-   }
    return normals;
 }
 
 bool written = false;
 
-Vec2D getNeumannValue( Vec2D point, vector<Polyline> boundaryNeumann, vector<Polyline> displacedPoints) {
+Vec2D getNeumannValue( Vec2D point, vector<Polyline> boundaryNeumann) {
    const double tolerance = 1e-5; // Define a small tolerance for comparison
    // Check if the point is on the Neumann boundary
    if (abs(imag(point) - 1) < tolerance) {
@@ -153,13 +228,13 @@ Vec2D getNeumannValue( Vec2D point, vector<Polyline> boundaryNeumann, vector<Pol
       return Vec2D(0, 0.1);
    }
    else if (abs(real(point)) < tolerance) {
-      return Vec2D(0.1, 0);
+      return Vec2D(0, 0);
    }
    else if (abs(real(point) - 1) < tolerance) {
-      return Vec2D(-0.1, 0);
+      return Vec2D(0, 0);
    }
    else {
-      // cout << "Error: getNeumannValue called with point not on Neumann boundary: " << real(point) << ", " << imag(point) << endl;
+      cout << "Error: getNeumannValue called with point not on Neumann boundary: " << real(point) << ", " << imag(point) << endl;
       Vec2D nan = numeric_limits<double>::quiet_NaN();
       return nan;
    }
@@ -469,18 +544,19 @@ vector<Vec2D> Green2D(double xi, double yi, double xj, double yj, double shearMo
    return {Vec2D(first, second), Vec2D(third, fourth)};
 }
 
-vector<Vec2D> kelvinKernel(double shearModulus, double poissonRatio, Vec2D x){
+vector<Vec2D> kelvinKernel(double shearModulus, double poissonRatio, Vec2D x_minus_y){
    double c1 = 1/2 * ( 1 / shearModulus  + 1 / (2 * shearModulus + poissonRatio));
    double c2 = 1/2 * ( 1 / shearModulus  - 1 / (2 * shearModulus + poissonRatio));
    
-   double k11 = - c2 / (2 * M_PI) * real(x) * real(x) / (length(x) * length(x));
-   double k12 = c1 / (2 * M_PI) * log(length(x)) - c2 / (2 * M_PI) * real(x) * imag(x) / (length(x) * length(x));
-   double k21 = c1 / (2 * M_PI) * log(length(x)) - c2 / (2 * M_PI) * real(x) * imag(x) / (length(x) * length(x));
-   double k22 = - c2 / (2 * M_PI) * imag(x) * imag(x) / (length(x) * length(x));
+   double k11 = - c2 / (2 * M_PI) * real(x_minus_y) * real(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
+   double k12 = c1 / (2 * M_PI) * log(length(x_minus_y)) - c2 / (2 * M_PI) * real(x_minus_y) * imag(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
+   double k21 = c1 / (2 * M_PI) * log(length(x_minus_y)) - c2 / (2 * M_PI) * real(x_minus_y) * imag(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
+   double k22 = - c2 / (2 * M_PI) * imag(x_minus_y) * imag(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
 
    return {Vec2D(k11, k12), 
            Vec2D(k21, k22)};
 }
+
 std::vector<std::vector<Vec2D>> kelvinKernelGradient(double shearModulus, double poissonRatio, Vec2D r) {
    // These c1, c2 need to be the same as in kelvinKernel
    double c1_val = 1.0 / (2.0 * shearModulus) + 1.0 / (2.0 * shearModulus + poissonRatio);
@@ -585,7 +661,7 @@ double E = 1.0;
 double mu = E / (2.0 * (1.0 + poissonRatio));
 static bool hasPrintedGlobal = false; 
 
-Vec2D getU(Vec2D startingPoint, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getNeumannValue, int depth, int maxDepth, Vec2D& accumulatedSecond,
+Vec2D getU(Vec2D startingPoint, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int depth, int maxDepth, Vec2D& accumulatedSecond,
 int& accumulatedNumber) { 
    vector<Vec2D> normals = getNormal(startingPoint);
    bool onBoundary = (normals.size() > 0);
@@ -630,7 +706,7 @@ int& accumulatedNumber) {
       hasPrintedGlobal = true;
       cout << "flipped: " << flipped << endl;
    }
-   Vec2D q = getNeumannValue(intersectionPoint, boundaryNeumann, displacedPoints); // Ensure u is defined
+   Vec2D q = getNeumannValue(intersectionPoint, boundaryNeumann); // Ensure u is defined
    vector<Vec2D> kernel =  KKernel(real(intersectionPoint), imag(intersectionPoint), real(startingPoint), imag(startingPoint), mu, poissonRatio);
    Vec2D second = Vec2D( 2 / p * real(matrixVectorMultiply(kernel, q)), 2 / p * imag(matrixVectorMultiply(kernel, q)));
    accumulatedSecond += second;
@@ -649,40 +725,65 @@ Vec2D getUDirichlet(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, fun
    bool onBoundary = (normals.size() > 0);
    double theta = random(-M_PI, M_PI);
    bool flipped = false;
-   if (!hasPrintedGlobal && normals.size() == 1 && dot(normals[0], Vec2D(cos(theta), sin(theta))) > 0) {
-      Vec2D u{cos(theta), sin(theta)};
-      theta += M_PI; // Flip the direction to sample in the hemisphere opposite to the normal
-      flipped = true;
-   } 
-   else if (!hasPrintedGlobal && normals.size() == 2 && (dot(normals[0], Vec2D(cos(theta), sin(theta))) > 0 || 
-      dot(normals[1], Vec2D(cos(theta), sin(theta))) > 0)) {
-      Vec2D u{cos(theta), sin(theta)};
-      if (dot(normals[0], Vec2D(cos(theta), sin(theta))) > 0 && 
-            dot(normals[1], Vec2D(cos(theta), sin(theta))) > 0) {
-         theta += M_PI; // Flip the direction to avoid being on the same side of both normals
-         flipped = true;
-      } else {
-         // Adjust theta to ensure it works with both normals
-         theta = atan2(-imag(normals[0] + normals[1]), -real(normals[0] + normals[1]));
-         flipped = true;
-      } 
-   } 
-   Vec2D v{cos(theta), sin(theta)};
+   Vec2D dir = Vec2D(cos(theta), sin(theta));
    Vec2D n{0, 0};
-   double p;
-   double r = distancePolylines(startingPoint, boundaryDirichlet).first; // Get the distance to the nearest point on the Neumann boundary
-   if (onBoundary) {
-      p = 1 / (2 * M_PI * r); // Hemisphere sampling on the boundary
-   } else {
-      p = 1 / (4 * M_PI * r); // Uniform distribution over the distance to the boundary
+   if (normals.size() == 1) {
+      double value1 = dot(normals[0], dir);
+      if (value1 > 0) {
+          theta += M_PI;
+          flipped = true;
+      }
+   } 
+   else if (normals.size() == 2) {
+      double value1 = dot(normals[0], dir);
+      double value2 = dot(normals[1], dir);
+
+      if (value1 > 0 || value2 > 0) {
+         if (value1 > 0 && value2 > 0) {
+            theta += M_PI;
+         } else {
+            theta = atan2(-imag(normals[0] + normals[1]), -real(normals[0] + normals[1]));
+         }
+         flipped = true;
+      }
    }
+   else if (normals.size() == 3) {
+      double value1 = dot(normals[0], dir);
+      double value2 = dot(normals[1], dir);
+      double value3 = dot(normals[2], dir);
+
+      if (value1 > 0 || value2 > 0 || value3 > 0) {
+         if (value1 > 0 && value2 > 0 && value3 > 0) {
+            theta += M_PI;
+         } else {
+            theta = atan2(-imag(normals[0] + normals[1] + normals[2]), -real(normals[0] + normals[1] + normals[2]));
+         }
+         flipped = true;
+      }
+   }
+   Vec2D v{cos(theta), sin(theta)};
+   double p;
+   double r = distancePolylines(startingPoint, boundaryDirichlet).first;
+   if (onBoundary) {
+      p = 1 / (2 * M_PI * r);
+   } else {
+      p = 1 / (4 * M_PI * r);
+   }
+
    Vec2D intersectionPoint = intersectPolylines(startingPoint, v, std::numeric_limits<double>::infinity(), boundaryDirichlet, n, onBoundary);
-   // Define p as the probability of getting this r
   
    if (!hasPrintedGlobal && (isinf(real(intersectionPoint)) || isinf(imag(intersectionPoint)) || isnan(real(intersectionPoint)) || isnan(imag(intersectionPoint)))) {
       cout << "startingPoint: " << real(startingPoint) << ", " << imag(startingPoint) << endl;
       cout << "v: " << real(v) << ", " << imag(v) << endl;
       cout << "intersectionPoint: " << real(intersectionPoint) << ", " << imag(intersectionPoint) << endl;
+      double value1 = dot(normals[0], v);
+      cout << "normal size : " << normals.size() << endl;
+      if (normals.size() == 2) { 
+         double value2 = dot(normals[1], v);
+         cout << "value1: " << value1 << ", value2: " << value2 << endl;
+      } else {
+         cout << "value1: " << value1 << endl;
+      }
       hasPrintedGlobal = true;
       cout << "flipped: " << flipped << endl;
    }
@@ -690,7 +791,7 @@ Vec2D getUDirichlet(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, fun
    Vec2D u = getDirichletValue(intersectionPoint, boundaryDirichlet, displacedPoints); // Ensure u is defined
    vector<Vec2D> ns = getNormal(intersectionPoint);
    Vec2D normal = ns.size() > 0 ? ns[0] : Vec2D(0, 0); // Use the first normal if available
-   if (ns.size() == 0) {
+   if (!hasPrintedGlobal && ns.size() == 0) {
       cout << "No normal found at intersection point: " << real(intersectionPoint) << ", " << imag(intersectionPoint) << endl;
    }
    vector<Vec2D> kernel =  conormalDerivativeKelvinKernel(mu, poissonRatio, Vec2D(real(startingPoint) - real(intersectionPoint), imag(startingPoint) - imag(intersectionPoint)), normal);
@@ -702,17 +803,216 @@ Vec2D getUDirichlet(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, fun
    }
 }
 
+int generateRandomZeroOrOne() {
+   static std::random_device rd;
+   static std::mt19937 gen(rd());
+   static std::uniform_real_distribution<double> dist(0.0, 1.0);
+
+   double randomValue = dist(gen);
+   return (randomValue < 2.0 / 3.0) ? 0 : 1;
+}
+
+Vec2D getMixedConditionResult(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> geNeumannValue, int depth, int maxDepth) {
+   Vec2D nextPoint = sampleRectangleBoundary();
+   if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)) {
+      if (depth >= maxDepth) {
+         return 2 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints);
+      }
+      else {
+         int choice = generateRandomZeroOrOne();
+         if (choice == 0) {
+            Vec2D contribution = getMixedConditionResult(nextPoint, boundaryDirichlet, boundaryNeumann, getDirichletValue, geNeumannValue, depth + 1, maxDepth);
+            Vec2D u = 2 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints) - (3 * contribution);
+            return u;
+         }
+         else {
+            Vec2D contribution = getMixedConditionResult(nextPoint, boundaryDirichlet, boundaryNeumann, getDirichletValue, geNeumannValue, depth + 1, maxDepth);
+            Vec2D u = 3 * contribution + 4 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints);
+            return u;
+         }
+      }
+   }
+   else {
+      if (depth >= maxDepth) {
+         return 2 * getNeumannValue(startingPoint, boundaryNeumann);
+      }
+      else {
+         Vec2D contribution = getMixedConditionResult(nextPoint, boundaryDirichlet, boundaryNeumann, getDirichletValue, geNeumannValue, depth + 1, maxDepth);
+         Vec2D u = 2 * getNeumannValue(startingPoint, boundaryNeumann) - contribution;
+         return u;
+      }
+   }
+}
+
+
+
+Vec2D getSourceTerm(Vec2D point) {
+   if (isOnDirichlet(point, boundaryDirichlet, boundaryNeumann)) {
+      return 2 * getDirichletValue(point, boundaryDirichlet, displacedPoints);
+   } else {
+      return 2 * getNeumannValue(point, boundaryNeumann);
+   }
+}
+
+Vec2D getMixedConditionResultKernel(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> geNeumannValue, int depth, int maxDepth) {
+
+   Vec2D sample_contribution = Vec2D(0.0, 0.0);
+   Vec2D currentPoint = sampleRectangleBoundary();
+   vector<Vec2D> currentPointNormals = getNormal(currentPoint);
+   Vec2D currentPointNormal = currentPointNormals.size() > 0 ? currentPointNormals[0] : Vec2D(0, 0); 
+   vector<Vec2D> path_weight = isOnDirichlet(currentPoint, boundaryDirichlet, boundaryNeumann) ? kelvinKernel(mu, poissonRatio, startingPoint - currentPoint) : conormalDerivativeKelvinKernel(mu, poissonRatio, startingPoint - currentPoint, currentPointNormal);
+
+   for (int depth = 0; depth < maxDepth; ++depth) {
+
+      if (depth == maxDepth - 1) {
+         path_weight = 1/2 * path_weight; 
+      }
+
+      vector<Vec2D> kernel_for_next_weight = {Vec2D(1, 1), Vec2D(1, 1)};
+      sample_contribution += matrixVectorMultiply(path_weight, getSourceTerm(currentPoint));
+      Vec2D nextPoint = sampleRectangleBoundary();
+      vector<Vec2D> normals = getNormal(nextPoint);
+      Vec2D normal = normals.size() > 0 ? normals[0] : Vec2D(0, 0); 
+      if (isOnDirichlet(currentPoint, boundaryDirichlet, boundaryNeumann)) {
+         int choice = generateRandomZeroOrOne();
+
+         if (isOnDirichlet(nextPoint, boundaryDirichlet, boundaryNeumann)) {
+            kernel_for_next_weight = - 8 * kelvinKernel(mu, poissonRatio, currentPoint - nextPoint);
+         } else {
+            kernel_for_next_weight = 8 * conormalDerivativeKelvinKernel(mu, poissonRatio, currentPoint - nextPoint, normal);
+         }
+      } else {
+         kernel_for_next_weight = 2 * conormalDerivativeKelvinKernel(mu, poissonRatio, currentPoint - nextPoint, normal);
+      }
+
+      path_weight = matrixMultiply(path_weight, kernel_for_next_weight);
+      currentPoint = nextPoint;
+   }
+
+   return sample_contribution + matrixVectorMultiply(path_weight, getSourceTerm(currentPoint));
+}
+
+Vec2D getMixedConditionResultKernel2(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> geNeumannValue, int depth, int maxDepth) {
+
+   Vec2D sample_contribution = Vec2D(0.0, 0.0);
+   Vec2D currentPoint = sampleRectangleBoundary();
+   vector<Vec2D> currentPointNormals = getNormal(currentPoint);
+   Vec2D currentPointNormal = currentPointNormals.size() > 0 ? currentPointNormals[0] : Vec2D(0, 0); 
+   vector<Vec2D> path_weight = isOnDirichlet(currentPoint, boundaryDirichlet, boundaryNeumann) ? kelvinKernel(mu, poissonRatio, startingPoint - currentPoint) : conormalDerivativeKelvinKernel(mu, poissonRatio, startingPoint - currentPoint, currentPointNormal);
+
+   for (int depth = 0; depth < maxDepth; ++depth) {
+
+      if (depth == maxDepth - 1) {
+         path_weight = 1/2 * path_weight; 
+      }
+
+      vector<Vec2D> kernel_for_next_weight = {Vec2D(1, 1), Vec2D(1, 1)};
+      sample_contribution += matrixVectorMultiply(path_weight, getSourceTerm(currentPoint));
+      Vec2D nextPoint = sampleRectangleBoundary();
+      vector<Vec2D> normals = getNormal(nextPoint);
+      Vec2D normal = normals.size() > 0 ? normals[0] : Vec2D(0, 0); 
+      if (isOnDirichlet(currentPoint, boundaryDirichlet, boundaryNeumann)) {
+         int choice = generateRandomZeroOrOne();
+
+         if (isOnDirichlet(nextPoint, boundaryDirichlet, boundaryNeumann)) {
+            if (choice == 0) {
+               kernel_for_next_weight = - 24 * kelvinKernel(mu, poissonRatio, currentPoint - nextPoint);
+            } else {
+               kernel_for_next_weight = vector<Vec2D>{Vec2D(3, 0), Vec2D(0, 3)};
+            }
+         } else {
+            if (choice == 0) {
+               kernel_for_next_weight = - 24 * conormalDerivativeKelvinKernel(mu, poissonRatio, currentPoint - nextPoint, normal);
+            } else {
+               kernel_for_next_weight = vector<Vec2D>{Vec2D(3, 0), Vec2D(0, 3)};
+            }
+         }
+      } else {
+         kernel_for_next_weight = 2 * conormalDerivativeKelvinKernel(mu, poissonRatio, currentPoint - nextPoint, normal);
+      }
+
+      path_weight = matrixMultiply(path_weight, kernel_for_next_weight);
+      currentPoint = nextPoint;
+   }
+
+   return sample_contribution + matrixVectorMultiply(path_weight, getSourceTerm(currentPoint));
+}
+
+Vec2D getMixedConditionResultKernel3(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> geNeumannValue, int depth, int maxDepth) {
+
+   Vec2D nextPoint = sampleRectangleBoundary();
+   vector<Vec2D> nextPointNormals = getNormal(nextPoint);
+   Vec2D nextPointNormal = nextPointNormals.size() > 0 ? nextPointNormals[0] : Vec2D(0, 0); 
+
+   if (depth == maxDepth) {
+      if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)) {
+         return 2 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints);
+      } else {
+         return getNeumannValue(startingPoint, boundaryNeumann);
+      }
+   }
+   else {
+      if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)) {
+         Vec2D contribution = getMixedConditionResultKernel3(nextPoint, boundaryDirichlet, boundaryNeumann, getDirichletValue, geNeumannValue, depth + 1, maxDepth);
+         int choice = generateRandomZeroOrOne();
+
+         if (choice == 0) {
+            return 2 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints) + 12 * contribution;// could be adding 
+         } else {
+            return 2 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints) - 3/2 * contribution; 
+         }
+
+      } else {
+         Vec2D contribution = getMixedConditionResultKernel3(nextPoint, boundaryDirichlet, boundaryNeumann, getDirichletValue, geNeumannValue, depth + 1, maxDepth);
+         return 2 * getNeumannValue(nextPoint, boundaryNeumann) - contribution;
+      }
+   }
+}
+
+Vec2D getMixedConditionResultKernel4(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> geNeumannValue, int depth, int maxDepth) {
+
+   Vec2D nextPoint = sampleRectangleBoundary();
+   vector<Vec2D> nextPointNormals = getNormal(nextPoint);
+   Vec2D nextPointNormal = nextPointNormals.size() > 0 ? nextPointNormals[0] : Vec2D(0, 0); 
+
+   if (depth == maxDepth) {
+      if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)) {
+         return getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints);
+      } else {
+         return getNeumannValue(startingPoint, boundaryNeumann);
+      }
+   }
+   else {
+      if (isOnDirichlet(nextPoint, boundaryDirichlet, boundaryNeumann)) {
+         Vec2D contribution = getMixedConditionResultKernel4(nextPoint, boundaryDirichlet, boundaryNeumann, getDirichletValue, geNeumannValue, depth + 1, maxDepth);
+         int choice = generateRandomZeroOrOne();
+         return 2 * getDirichletValue(nextPoint, boundaryDirichlet, displacedPoints) - contribution;
+
+         // if (choice == 0) {
+         //    return 2 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints) + 12 * contribution;// could be adding 
+         // } else {
+         //    return 2 * getDirichletValue(startingPoint, boundaryDirichlet, displacedPoints) - 3/2 * contribution; 
+         // }
+
+      } else {
+         Vec2D contribution = getMixedConditionResultKernel4(nextPoint, boundaryDirichlet, boundaryNeumann, getDirichletValue, geNeumannValue, depth + 1, maxDepth);
+         return 2 * getNeumannValue(nextPoint, boundaryNeumann) - contribution;
+      }
+   }
+}
+
+
 void solveGradientWOB( Vec2D x0,
               vector<Polyline> boundaryDirichlet, 
               vector<Polyline> boundaryNeumann,
-              function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getNeumannValue, std::ofstream& displacementFile, std::ofstream& gradientFile) { 
+              function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, std::ofstream& displacementFile, std::ofstream& gradientFile) { 
    const int nWalks = 100000; 
    Vec2D sumU = Vec2D(0.0, 0.0);
    int i = 0;
 
    #pragma omp parallel for reduction(+:sum)
    for( i = 0; i < nWalks; i++ ) {
-      Vec2D uhat = getUDirichlet(x0, boundaryDirichlet, getDirichletValue, 0, 10);
+      Vec2D uhat = getMixedConditionResultKernel4(x0, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 0, 5);
       sumU += uhat;
       // Vec2D uhat = getU(x0, boundaryNeumann, getNeumannValue, 0, 5, accumulatedSecond, accumulatedNumber);
       // sumU += uhat + Vec2D(accumulatedSecond.real() / accumulatedNumber, accumulatedSecond.imag() / accumulatedNumber);
@@ -796,37 +1096,30 @@ vector<Vec2D> solveGradient( Vec2D x0,
       raidus = dDirichlet; 
              
    }
-   // else {
-   //    accumulatedAKernel = matrixMultiply(
-   //       accumulatedAKernel, 
-   //       { Vec2D(kernelAii(real(center), real(x), r, poissonRatio), kernelAij(real(center), real(x), imag(center), imag(x), r, poissonRatio)),
-   //          Vec2D(kernelAij(imag(center), imag(x), real(center), real(x), r, poissonRatio), kernelAii(imag(center), imag(x), r, poissonRatio))}        
-   //    );
-   // }
 
    steps++;
    } 
    while(dDirichlet > eps && steps < maxSteps);
 
-   if( steps >= maxSteps ) continue;
-   // accumulatedDisplacement = { Vec2D(kernelAii(real(x0), real(x), r, poissonRatio), kernelAij(real(x0), real(x), imag(x0), imag(x), r, poissonRatio)),
-                              // Vec2D(kernelAij(imag(x0), imag(x), real(x0), real(x), r, poissonRatio), kernelAii(imag(x0), imag(x), r, poissonRatio))};            
-   Vec2D ug = getDirichletValue(closestPoint, boundaryDirichlet, displacedPoints) - closestPoint;
-   Vec2D estimated_u = ug;
-   vector<Vec2D> estimated_normal = multiply(estimated_u, normal);
-   estimated_normal = { Vec2D(2 * 1/raidus * real(estimated_normal[0]), 2 * 1/raidus * imag(estimated_normal[0])),
-   Vec2D(2 * 1/raidus * real(estimated_normal[1]), 2 * 1/raidus * imag(estimated_normal[1])) };
+      if( steps >= maxSteps ) continue;
+      // accumulatedDisplacement = { Vec2D(kernelAii(real(x0), real(x), r, poissonRatio), kernelAij(real(x0), real(x), imag(x0), imag(x), r, poissonRatio)),
+                                 // Vec2D(kernelAij(imag(x0), imag(x), real(x0), real(x), r, poissonRatio), kernelAii(imag(x0), imag(x), r, poissonRatio))};            
+      Vec2D ug = getDirichletValue(closestPoint, boundaryDirichlet, displacedPoints) - closestPoint;
+      Vec2D estimated_u = ug;
+      vector<Vec2D> estimated_normal = multiply(estimated_u, normal);
+      estimated_normal = { Vec2D(2 * 1/raidus * real(estimated_normal[0]), 2 * 1/raidus * imag(estimated_normal[0])),
+      Vec2D(2 * 1/raidus * real(estimated_normal[1]), 2 * 1/raidus * imag(estimated_normal[1])) };
 
-   if (isnan(real(estimated_u)) || isnan(imag(estimated_u))) {
-   continue;
-   }
-   walker += 1;
-   sum_11 += real(estimated_normal[0]);
-   sum_12 += imag(estimated_normal[0]);
-   sum_21 += real(estimated_normal[1]);
-   sum_22 += imag(estimated_normal[1]);
-   sum_x += real(estimated_u);
-   sum_y += imag(estimated_u);
+      if (isnan(real(estimated_u)) || isnan(imag(estimated_u))) {
+      continue;
+      }
+      walker += 1;
+      sum_11 += real(estimated_normal[0]);
+      sum_12 += imag(estimated_normal[0]);
+      sum_21 += real(estimated_normal[1]);
+      sum_22 += imag(estimated_normal[1]);
+      sum_x += real(estimated_u);
+      sum_y += imag(estimated_u);
    } 
 
    displacementFile << real(x0) << "," << imag(x0) << ",";
@@ -837,7 +1130,6 @@ vector<Vec2D> solveGradient( Vec2D x0,
    Vec2D row2 = Vec2D(sum_21/walker, sum_22/walker);
    return {row1, row2};
 }
-
 
 Vec2D interpolateVec2D_BoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-5) { 
    for (int i = 0; i < originalPoints[0].size() - 1; i++) {
@@ -992,7 +1284,7 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_dirichlet_nonconvex";
+   string shape = "lame_wob_mixed_9";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
@@ -1039,8 +1331,6 @@ int main( int argc, char** argv ) {
                solveGradientWOB(point, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, displacementFile, gradientFile);
          }
    }
-      
-
 
    // for( int j = 0; j < s; j++ )
    // {
