@@ -1,5 +1,5 @@
 
-// c++ -std=c++17 -O3 -pedantic -Wall gradientEstimateLame.cpp -o gel -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -w
+// Compile with: c++ -std=c++17 -O3 -pedantic -Wall -Xclang -fopenmp gradientEstimateLame.cpp -o gel -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -lomp -w
 
 #include <algorithm>
 #include <array>
@@ -10,6 +10,7 @@
 #include <vector>
 #include <fstream>
 #include <chrono> 
+#include <omp.h>
 using namespace std;
 using namespace std::chrono; 
 
@@ -599,14 +600,29 @@ vector<Vec2D> Green2D(double xi, double yi, double xj, double yj, double shearMo
    return {Vec2D(first, second), Vec2D(third, fourth)};
 }
 
+
 vector<Vec2D> kelvinKernel(double shearModulus, double poissonRatio, Vec2D x_minus_y){
-   double c1 = 1/2 * ( 1 / shearModulus  + 1 / (2 * shearModulus + poissonRatio));
-   double c2 = 1/2 * ( 1 / shearModulus  - 1 / (2 * shearModulus + poissonRatio));
+   // Calculate c1 and c2 coefficients for Kelvin fundamental solution
+   // Using floating point division to avoid integer division truncation
+   double c1 = 0.5 * (1.0 / shearModulus + 1.0 / (2.0 * shearModulus + poissonRatio));
+   double c2 = 0.5 * (1.0 / shearModulus - 1.0 / (2.0 * shearModulus + poissonRatio));
    
-   double k11 = - c2 / (2 * M_PI) * real(x_minus_y) * real(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
-   double k12 = c1 / (2 * M_PI) * log(length(x_minus_y)) - c2 / (2 * M_PI) * real(x_minus_y) * imag(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
-   double k21 = c1 / (2 * M_PI) * log(length(x_minus_y)) - c2 / (2 * M_PI) * real(x_minus_y) * imag(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
-   double k22 = - c2 / (2 * M_PI) * imag(x_minus_y) * imag(x_minus_y) / (length(x_minus_y) * length(x_minus_y));
+   double r_len = length(x_minus_y);
+   double r_len_sq = r_len * r_len;
+   double epsilon = 1e-12; // A small value to prevent division by zero or log(0)
+
+   // Add epsilon to prevent division by zero and log(0)
+   if (r_len_sq < epsilon) {
+      r_len_sq = epsilon;
+   }
+   if (r_len < epsilon) {
+      r_len = epsilon;
+   }
+
+   double k11 = - c2 / (2 * M_PI) * real(x_minus_y) * real(x_minus_y) / r_len_sq;
+   double k12 = c1 / (2 * M_PI) * log(r_len) - c2 / (2 * M_PI) * real(x_minus_y) * imag(x_minus_y) / r_len_sq;
+   double k21 = c1 / (2 * M_PI) * log(r_len) - c2 / (2 * M_PI) * real(x_minus_y) * imag(x_minus_y) / r_len_sq;
+   double k22 = - c2 / (2 * M_PI) * imag(x_minus_y) * imag(x_minus_y) / r_len_sq;
 
    return {Vec2D(k11, k12), 
            Vec2D(k21, k22)};
@@ -1200,7 +1216,6 @@ Vec2D fredholmEquationKnown(Vec2D point, vector<Polyline> boundaryDirichlet, vec
          integralFreeTerm = 0.25;
       }
       return 1 / integralFreeTerm * getNeumannValue(point, boundaryNeumann);
-
    }
 }
 
@@ -1230,6 +1245,7 @@ Polyline fredholmEquationUnknown(Vec2D startingPoint, Vec2D nextPoint, vector<Po
 Polyline solutionUnknown(Vec2D startingPoint, Vec2D nextPoint, double invPdf) {
    return invPdf * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
 }
+
 
 pair<Vec2D, double> importanceSample(Vec2D startingPoint){
    if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)) {
@@ -1281,8 +1297,8 @@ Vec2D getMixedConditionResultKernel6(Vec2D startingPoint, vector<Polyline> bound
    double invPdf = pair.second;
    vector<Vec2D> nextPointNormals = getNormal(nextPoint);
    Vec2D nextPointNormal = Vec2D(0, 0);
-
-   Vec2D pathWeight = 4 * fredholmEquationKnown(nextPoint, boundaryDirichlet, boundaryNeumann);
+   Vec2D pathWeight = invPdf * fredholmEquationKnown(nextPoint, boundaryDirichlet, boundaryNeumann);
+   vector<Vec2D> matrix = solutionUnknown(startingPoint, nextPoint, invPdf);
 
    for (int i = 0; i < maxDepth; i++){
       if (i == maxDepth - 1) { pathWeight *= 1/2;}
@@ -1293,7 +1309,7 @@ Vec2D getMixedConditionResultKernel6(Vec2D startingPoint, vector<Polyline> bound
       double invPdf = pair.second;
       pathWeight = matrixVectorMultiply(fredholmEquationUnknown(startingPoint, nextPoint, boundaryDirichlet, boundaryNeumann, nextPointNormal, invPdf), pathWeight);
    }
-
+   
    return result;
 }
 
@@ -1374,7 +1390,7 @@ void solveGradientWOB( Vec2D x0,
    Vec2D sumU = Vec2D(0.0, 0.0);
    int i = 0;
 
-   #pragma omp parallel for reduction(+:sum)
+   #pragma omp parallel for reduction(+:sumU)
    for( i = 0; i < nWalks; i++ ) {
       Vec2D uhat = getMixedConditionResultKernel6(x0, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 0, 5);
       sumU += uhat;
@@ -1383,6 +1399,9 @@ void solveGradientWOB( Vec2D x0,
    } 
 
    displacementFile << real(x0) << "," << imag(x0) << ",";
+   if (isnan(real(sumU) /nWalks) || isnan(imag(sumU)/nWalks)) {
+      cout << "Nan value encountered at x0: " << real(x0) << ", " << imag(x0) << endl;
+   }
    displacementFile << real(sumU) /nWalks  << "," << imag(sumU)/nWalks << "\n";
 }
 
@@ -1412,7 +1431,6 @@ vector<Vec2D> solveGradient( Vec2D x0,
    int biggerY = 0;
    int smallerY = 0;
 
-   #pragma omp parallel for reduction(+:sum)
    double nextTheta = -1;
    int count = 0;
    Vec2D center;
@@ -1648,7 +1666,7 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_mixed_17";
+   string shape = "lame_wob_mixed_18";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
