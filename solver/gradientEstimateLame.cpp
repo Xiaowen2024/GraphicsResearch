@@ -137,56 +137,30 @@ Vec2D sampleRectangleBoundary() {
 }
 
 pair<Vec2D, double> rectangleBoundarySampler() {
-   // Define the rectangle's properties (unit square from 0,0 to 1,1)
-   double min_x = 0.0;
-   double min_y = 0.0;
-   double max_x = 1.0;
-   double max_y = 1.0;
+   double min_x = 0.0, min_y = 0.0, max_x = 1.0, max_y = 1.0;
+   double width = max_x - min_x, height = max_y - min_y;
+   double perimeter = 2.0 * (width + height);
 
-   // Calculate the lengths of the sides
-   double width = max_x - min_x;
-   double height = max_y - min_y;
+   static thread_local std::mt19937 gen((std::random_device())());
+   static std::uniform_real_distribution<> distrib(0.0, perimeter);
 
-   // Calculate the total perimeter
-   double perimeter = 2 * (width + height);
-
-   // Initialize random number generator
-   // std::random_device provides a non-deterministic seed
-   std::random_device rd;
-   // std::mt19937 is a Mersenne Twister pseudo-random number generator
-   std::mt19937 gen(rd());
-   // std::uniform_real_distribution generates uniformly distributed real numbers
-   // in the range [0, perimeter)
-   std::uniform_real_distribution<> distrib(0.0, perimeter);
-
-   // Generate a random distance along the perimeter
    double random_distance = distrib(gen);
-
    double x, y;
 
-   // Determine which side the point falls on and calculate its coordinates
-   // Side 1: Bottom edge (from (0,0) to (1,0))
    if (random_distance < width) {
-       x = min_x + random_distance;
-       y = min_y;
-   }
-   // Side 2: Right edge (from (1,0) to (1,1))
-   else if (random_distance < width + height) {
-       x = max_x;
-       y = min_y + (random_distance - width);
-   }
-   // Side 3: Top edge (from (1,1) to (0,1))
-   else if (random_distance < 2 * width + height) {
+       x = min_x + random_distance; y = min_y;
+   } else if (random_distance < width + height) {
+       x = max_x; y = min_y + (random_distance - width);
+   } else if (random_distance < 2 * width + height) {
        x = max_x - (random_distance - (width + height));
        y = max_y;
-   }
-   // Side 4: Left edge (from (0,1) to (0,0))
-   else {
+   } else {
        x = min_x;
        y = max_y - (random_distance - (2 * width + height));
    }
 
-   return make_pair(Vec2D{x, y}, random_distance / perimeter); // Return the point and its PDF
+   double pdf = 1.0 / perimeter;               // <<-- correct uniform pdf along the perimeter
+   return make_pair(Vec2D{x, y}, pdf);
 }
 
 
@@ -1286,14 +1260,14 @@ vector<Vec2D> computeTractionKernel2D(Vec2D x, Vec2D y, Vec2D normal_y, double s
 
 Polyline fredholmEquationUnknown(Vec2D startingPoint, Vec2D nextPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, Vec2D nextPointNormal, double invPdf) {
    if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)){
-      return - invPdf * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
+      return - invPdf * 4 * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
    }
    else {
       // double integralFreeTerm = 0.5;
       // if (isOnCorner(startingPoint, boundaryDirichlet, boundaryNeumann)) {
       //    integralFreeTerm = 0.25;
       // }
-      return - invPdf * computeTractionKernel2D(startingPoint, nextPoint, nextPointNormal, mu, poissonRatio);
+      return - invPdf * 2 * computeTractionKernel2D(startingPoint, nextPoint, nextPointNormal, mu, poissonRatio);
    }
 }
 
@@ -1484,7 +1458,7 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
 
     const float phi = 1.0f;
     const float k = 4.0f;
-    const float p_k = 0.5f;
+    const float p_k = 1/3;
 
     Vec2D finalResult = Vec2D(0, 0);
 
@@ -1521,21 +1495,15 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
         BoundaryType currentType = getBoundaryTypeAtPoint(previousPoint, boundaryDirichlet, boundaryNeumann);
 
         if (currentType == BoundaryType::Neumann) {
-            // **CRITICAL FIX**: Sample from the PREVIOUS boundary point, not the start.
             pair<Vec2D, double> nextStep = importanceSample(previousPoint);
             currentPoint = nextStep.first;
             double invPdf = nextStep.second;
-            Vec2D normal_prev = getNormal(previousPoint)[0]; // Assuming getNormal is safe
+            Vec2D normal_prev = getNormal(previousPoint)[0];
 
             pathWeight = matrixVectorMultiply(fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf), pathWeight);
         
         } else { // DIRICHLET
-            std::random_device rd_pk;
-            std::mt19937 gen_pk(rd_pk());
-            std::uniform_real_distribution<double> dist_pk(0.0, 1.0);
-
-            if (dist_pk(gen_pk) < p_k) {
-                // **CRITICAL FIX**: Sample from the PREVIOUS boundary point.
+            if (uni01(rng)  < p_k) {
                 pair<Vec2D, double> nextStep = importanceSample(previousPoint);
                 currentPoint = nextStep.first;
                 double invPdf = nextStep.second;
@@ -1545,13 +1513,11 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
                 pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight);
             } else {
                 pathWeight *= (1.0f / (1.0f - p_k));
-                // **CRITICAL FIX**: Explicitly stay at the same point.
                 currentPoint = previousPoint;
             }
         }
     }
-   
-    // **CRITICAL FIX**: The return statement must be OUTSIDE the loop.
+
     return finalResult;
 }
 
@@ -1905,8 +1871,25 @@ string double_to_str(double f) {
    return str;
 }
 
+// void testBoundarySampler(int N = 10000) {
+//    std::map<std::string,int> counts;
+//    double min_pdf = 1e9, max_pdf = 0;
+//    for (int i=0;i<N;i++){
+//        auto p = rectangleBoundarySampler();
+//        Vec2D pt = p.first; double pdf = p.second;
+//        min_pdf = std::min(min_pdf, pdf);
+//        max_pdf = std::max(max_pdf, pdf);
+//        if (real(pt) <= 0.0001) counts["left"]++;
+//        else if (real(pt) >= 0.9999) counts["right"]++;
+//        else if (imag(pt) <= 0.0001) counts["bottom"]++;
+//        else if (imag(pt) >= 0.9999) counts["top"]++;
+//    }
+//    cout<<"pdf range: "<<min_pdf<<" - "<<max_pdf<<endl;
+//    cout<<"counts L R B T: "<<counts["left"]<<" "<<counts["right"]<<" "<<counts["bottom"]<<" "<<counts["top"]<<endl;
+// }
+
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_mixed_23";
+   string shape = "lame_wob_mixed_26";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
@@ -1914,6 +1897,8 @@ int main( int argc, char** argv ) {
    std::ofstream gradientFile("../output/" + fileName + "_deformation_gradient.csv");
    std::ofstream displacementFile("../output/" + shape + "_displacements.csv");
    gradientFile << "X,Y,F11,F12,F21,F22\n";
+
+   // testBoundarySampler();
 
    for( int j = 0; j < s; j++ )
    {
