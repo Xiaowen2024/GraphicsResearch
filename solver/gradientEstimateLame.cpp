@@ -285,10 +285,10 @@ Vec2D getNeumannValue( Vec2D point, vector<Polyline> boundaryNeumann) {
    const double tolerance = 1e-5; // Define a small tolerance for comparison
    // Check if the point is on the Neumann boundary
    if (abs(imag(point) - 1) < tolerance) {
-      return Vec2D(0, -1);
+      return Vec2D(0, -0.1);
    }
    else if (abs(imag(point)) < tolerance) {
-      return Vec2D(0, 1);
+      return Vec2D(0, 0.1);
    }
    else if (abs(real(point)) < tolerance) {
       return Vec2D(0, 0);
@@ -1235,7 +1235,7 @@ vector<Vec2D> computeTractionKernel2D(Vec2D x, Vec2D y, Vec2D normal_y, double s
    // The vector r from the source 'y' to the field point 'x'
    Vec2D r_vec(real(x) - real(y), imag(x) - imag(y));
 
-   double r_len_sq = std::norm(r_vec);
+   double r_len_sq = std::norm(r_vec); 
    if (r_len_sq < 1e-12) {
        return { Vec2D(0,0), Vec2D(0,0) };
    }
@@ -1258,9 +1258,38 @@ vector<Vec2D> computeTractionKernel2D(Vec2D x, Vec2D y, Vec2D normal_y, double s
    return { Vec2D(T11, T12), Vec2D(T21, T22) };
 }
 
+// vector<Vec2D> computeTractionKernel2D(Vec2D x, Vec2D y, Vec2D normal_y, double shearModulus, double poissonRatio) {
+//    Vec2D r_vec(real(x) - real(y), imag(x) - imag(y));
+
+//    double r_len_sq = std::norm(r_vec);
+//    if (r_len_sq < 1e-12) {
+//        return { Vec2D(0,0), Vec2D(0,0) };
+//    }
+//    double r_len = std::sqrt(r_len_sq);
+
+//    double r_x = real(r_vec);
+//    double r_y = imag(r_vec);
+//    double n_x = real(normal_y);
+//    double n_y = imag(normal_y);
+
+//    double r_dot_n = r_x * n_x + r_y * n_y;
+
+//    double constant_factor = (1.0 - 2.0 * poissonRatio) / (4.0 * M_PI * (1.0 - poissonRatio) * r_len);
+   
+//    // Calculate components based on the standard BEM formula T_ik = ...
+//    double T11 = constant_factor * (n_x + (2.0 / (1.0 - 2.0 * poissonRatio)) * (r_x / r_len) * (r_x / r_len) * r_dot_n / r_len);
+//    double T12 = constant_factor * (n_y - (2.0 / (1.0 - 2.0 * poissonRatio)) * (r_x / r_len) * (r_y / r_len) * r_dot_n / r_len);
+//    double T21 = constant_factor * (n_x - (2.0 / (1.0 - 2.0 * poissonRatio)) * (r_y / r_len) * (r_x / r_len) * r_dot_n / r_len);
+//    double T22 = constant_factor * (n_y + (2.0 / (1.0 - 2.0 * poissonRatio)) * (r_y / r_len) * (r_y / r_len) * r_dot_n / r_len);
+
+//    return { Vec2D(T11, T12), Vec2D(T21, T22) };
+// }
+
+
+
 Polyline fredholmEquationUnknown(Vec2D startingPoint, Vec2D nextPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, Vec2D nextPointNormal, double invPdf) {
    if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)){
-      return - invPdf * 4 * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
+      return - 2 * invPdf * 4 * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
    }
    else {
       // double integralFreeTerm = 0.5;
@@ -1457,7 +1486,7 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
    function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
     const float phi = 1.0f;
-    const float k = 4.0f;
+    const float k = 5.0f;
     const float p_k = 1/3;
 
     Vec2D finalResult = Vec2D(0, 0);
@@ -1594,13 +1623,13 @@ void solveGradientWOB( Vec2D x0,
               vector<Polyline> boundaryDirichlet, 
               vector<Polyline> boundaryNeumann,
               function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, std::ofstream& displacementFile, std::ofstream& gradientFile) { 
-   const int nWalks = 100000; 
+   const int nWalks = 1000000; 
    Vec2D sumU = Vec2D(0.0, 0.0);
    int i = 0;
 
    #pragma omp parallel for reduction(+:sumU)
    for( i = 0; i < nWalks; i++ ) {
-      Vec2D uhat = getMixedConditionResultKernel7(x0, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 5);
+      Vec2D uhat = getMixedConditionResultKernel7(x0, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 14);
       sumU += uhat;
    } 
 
@@ -1889,7 +1918,7 @@ string double_to_str(double f) {
 // }
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_mixed_26";
+   string shape = "lame_wob_mixed_36";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
