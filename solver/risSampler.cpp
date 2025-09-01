@@ -8,13 +8,8 @@
 #include "fractureModelHelpers.h"
 
 
-struct BoundaryPoint {
-    Vec2D p;
-    Vec2D n;
-};
-
 template <typename RandomEngine, typename Func, typename UniformSampler>
-std::pair<BoundaryPoint, double> sample_boundary_ris(
+std::pair<Vec2D, double> sample_boundary_ris(
     RandomEngine& rng,
     Func target_distribution_func,
     UniformSampler uniform_sampler,
@@ -22,7 +17,7 @@ std::pair<BoundaryPoint, double> sample_boundary_ris(
 {
     // A nested struct for the reservoir, just like in the original code.
     struct Reservoir {
-        BoundaryPoint y;            // The chosen sample
+        Vec2D y;   // The chosen sample
         double w_sum = 0.0;         // The sum of weights
         unsigned int M = 0;         // The number of candidates seen
         RandomEngine& rng_ref;      // Reference to the random engine
@@ -30,7 +25,7 @@ std::pair<BoundaryPoint, double> sample_boundary_ris(
         Reservoir(RandomEngine& engine) : rng_ref(engine) {}
 
         // The core update logic is identical to the GPU version.
-        void update(const BoundaryPoint& x_i, double w_i) {
+        void update(const Vec2D& x_i, double w_i) {         
             w_sum += w_i;
             M++;
             // Generate a random number to decide if we swap the sample
@@ -60,7 +55,7 @@ std::pair<BoundaryPoint, double> sample_boundary_ris(
     }
 
     // 4. Finalize the result
-    BoundaryPoint result_sample = reservoir.y;
+    Vec2D result_sample = reservoir.y;
     double target_val_at_result = target_distribution_func(result_sample);
 
     // The PDF of the chosen sample is estimated as:

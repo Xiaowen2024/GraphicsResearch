@@ -102,7 +102,7 @@ Vec2D solve( Vec2D x0, // evaluation point
       int biggerY = 0;
       int smallerY = 0;
       
-      #pragma omp parallel for reduction(+:sum)
+      // #pragma omp parallel for reduction(+:sum)
       double nextTheta = -1;
       bool isStarting = true;
       for( i = 0; i < nWalks; i++ ) {
@@ -167,7 +167,7 @@ vector<Vec2D> solveGradient( Vec2D x0, // evaluation point
    int biggerY = 0;
    int smallerY = 0;
 
-   #pragma omp parallel for reduction(+:sum)
+   // #pragma omp parallel for reduction(+:sum)
    double nextTheta = -1;
    int count = 0;
    Vec2D center;
