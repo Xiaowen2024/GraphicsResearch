@@ -160,7 +160,7 @@ pair<Vec2D, double> rectangleBoundarySampler() {
    }
 
    double pdf = 1.0 / perimeter;
-   return make_pair(Vec2D{x, y}, 1/pdf);
+   return make_pair(Vec2D{x, y}, 1 / pdf);
 }
 
 
@@ -1329,26 +1329,17 @@ Polyline fredholmEquationUnknown(Vec2D startingPoint, Vec2D nextPoint, vector<Po
       return  - invPdf * 4 * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
    }
    else {
-      // double integralFreeTerm = 0.5;
-      // if (isOnCorner(startingPoint, boundaryDirichlet, boundaryNeumann)) {
-      //    integralFreeTerm = 0.25;
-      // }
       return - invPdf * 2 * computeTractionKernel2D(startingPoint, nextPoint, nextPointNormal, mu, poissonRatio);
    }
 }
 
-
-
-// Vec2D solutionKnown(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann){
-//    if (isOnDirichlet(point, boundaryDirichlet, boundaryNeumann)){
-//       return getDirichletValue(point, boundaryDirichlet, displacedPoints);
-//    }
-//    else {
-//       return Vec2D{0, 0};
-//    }
-// }
-
-Polyline solutionUnknown(Vec2D startingPoint, Vec2D nextPoint, double invPdf) {
+Polyline solutionUnknown(Vec2D startingPoint, Vec2D nextPoint, double invPdf, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann) {
+   // if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)) {
+   //    return {Vec2D(0,0), Vec2D(0,0)};
+   // }
+   // else {
+   //    return invPdf * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
+   // }
    return invPdf * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
 }
 
@@ -1413,7 +1404,7 @@ Vec2D getMixedConditionResultKernel6(Vec2D queryPoint, vector<Polyline> boundary
 
    for (int i = 0; i < maxDepth; i++){
       if (i == maxDepth - 1) { pathWeight *= 1/2;}
-      result += matrixVectorMultiply(solutionUnknown(queryPoint, currentPoint, 1.0), pathWeight);
+      result += matrixVectorMultiply(solutionUnknown(queryPoint, currentPoint, 1.0, boundaryDirichlet, boundaryNeumann), pathWeight);
       Vec2D previousPoint = currentPoint;
       pair = importanceSample(previousPoint); 
       currentPoint = pair.first;
@@ -1570,7 +1561,7 @@ Vec2D getMixedConditionResultKernel8(Vec2D startingPoint, vector<Polyline> bound
                Vec2D normal_prev = getNormal(previousPoint)[0];
 
                Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf);
-               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight);
+               pathWeight = matrixVectorMultiply(weightUpdate, pathWeight);
             } else {
                pathWeight *= (1.0f / (1.0f - p_k));
                currentPoint = previousPoint;
@@ -1592,6 +1583,190 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
     Vec2D finalResult = Vec2D(0, 0);
 
     // --- INITIALIZATION ---
+    pair<Vec2D, double> firstStep = rectangleBoundarySampler();
+    Vec2D currentPoint = firstStep.first;
+    double invPdf_0 = firstStep.second;
+
+   BoundaryType initialType = getBoundaryTypeAtPoint(currentPoint, boundaryDirichlet, boundaryNeumann);
+    Vec2D pathWeight;
+    if (initialType == BoundaryType::Neumann) {
+       pathWeight = invPdf_0 * (2.0f * phi * getNeumannValue(currentPoint, boundaryNeumann));
+    } else { // DIRICHLET
+       pathWeight = invPdf_0 * (k * getDirichletValue(currentPoint, boundaryDirichlet, displacedPoints));
+    }
+
+   thread_local std::mt19937 rng( std::random_device{}() );
+   std::uniform_real_distribution<double> uni01(0.0, 1.0);
+    // --- THE RANDOM WALK ON THE BOUNDARY ---
+    for (int i = 0; i < maxDepth; i++) {
+        // --- 1. ACCUMULATE RESULT ---
+        // The last-step kernel should not be scaled by the PDF.
+        finalResult += matrixVectorMultiply(solutionUnknown(startingPoint, currentPoint, 1.0, boundaryDirichlet, boundaryNeumann), pathWeight);
+
+      // --- 2. RUSSIAN ROULETTE ---
+        const double absorptionProb = 0.2;
+        if (uni01(rng) < absorptionProb) {
+            break;
+        }
+        pathWeight *= (1.0f / (1.0f - absorptionProb));
+
+        // --- 3. UPDATE PATH WEIGHT ---
+        Vec2D previousPoint = currentPoint;
+        BoundaryType currentType = getBoundaryTypeAtPoint(previousPoint, boundaryDirichlet, boundaryNeumann);
+
+        if (currentType == BoundaryType::Neumann) {
+            pair<Vec2D, double> nextStep = importanceSample(previousPoint);
+            currentPoint = nextStep.first;
+            double invPdf = nextStep.second;
+            Vec2D normal_prev = getNormal(previousPoint)[0];
+
+            pathWeight = matrixVectorMultiply(fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf), pathWeight);
+        
+        } else { // DIRICHLET
+            if (uni01(rng)  < p_k) {
+                pair<Vec2D, double> nextStep = importanceSample(previousPoint);
+                currentPoint = nextStep.first;
+                double invPdf = nextStep.second;
+                Vec2D normal_prev = getNormal(previousPoint)[0];
+
+                Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf);
+                pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight);
+            } else {
+                pathWeight *= (1.0f / (1.0f - p_k));
+                currentPoint = previousPoint;
+            }
+        }
+    }
+
+    return finalResult;
+}
+
+Vec2D getMixedConditionResultKernel10(Vec2D startingPoint, vector<Polyline> boundaryDirichlet,vector<Polyline> boundaryNeumann, function<Vec2D (Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue,
+   function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
+   const float phi = 1.0f;
+   const float k = 4.0f;
+   const float p_k = 1/3;
+   Vec2D finalResult = Vec2D(0, 0);
+   
+   pair<Vec2D, double> firstStep = importanceSample(startingPoint);
+   Vec2D currentPoint = firstStep.first;
+   double invPdf_0 = firstStep.second;
+
+   BoundaryType initialType = getBoundaryTypeAtPoint(currentPoint, boundaryDirichlet, boundaryNeumann);
+
+   Vec2D pathWeight;
+   
+   if (initialType == BoundaryType::Neumann) {
+   
+      pathWeight = invPdf_0 * (2.0f * phi * getNeumannValue(currentPoint, boundaryNeumann));
+   
+   } else { // DIRICHLET
+   
+      pathWeight = invPdf_0 * (k * getDirichletValue(currentPoint, boundaryDirichlet, displacedPoints));
+   
+   }
+   
+   
+   
+   thread_local std::mt19937 rng( std::random_device{}() );
+   
+   std::uniform_real_distribution<double> uni01(0.0, 1.0);
+   
+   // --- THE RANDOM WALK ON THE BOUNDARY ---
+   
+   for (int i = 0; i < maxDepth; i++) {
+   
+      // --- 1. ACCUMULATE RESULT ---
+      
+      // The last-step kernel should not be scaled by the PDF.
+   
+      finalResult += matrixVectorMultiply(solutionUnknown(startingPoint, currentPoint, 1.0, boundaryDirichlet, boundaryNeumann), pathWeight);
+   
+   
+   
+      // --- 2. RUSSIAN ROULETTE ---
+      
+      const double absorptionProb = 0.2;
+      
+      if (uni01(rng) < absorptionProb) {
+      
+       break;
+      
+      }
+   
+      pathWeight *= (1.0f / (1.0f - absorptionProb));
+   
+   
+      
+      // --- 3. UPDATE PATH WEIGHT ---
+      
+      Vec2D previousPoint = currentPoint;
+      
+      BoundaryType currentType = getBoundaryTypeAtPoint(previousPoint, boundaryDirichlet, boundaryNeumann);
+      
+      
+      
+      if (currentType == BoundaryType::Neumann) {
+      
+      pair<Vec2D, double> nextStep = importanceSample(previousPoint);
+      
+      currentPoint = nextStep.first;
+      
+      double invPdf = nextStep.second;
+      
+      Vec2D normal_prev = getNormal(previousPoint)[0];
+      
+      
+      
+      pathWeight = matrixVectorMultiply(fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf), pathWeight);
+      
+      
+      } else { // DIRICHLET
+      
+      if (uni01(rng) < p_k) {
+      
+      pair<Vec2D, double> nextStep = importanceSample(previousPoint);
+      
+      currentPoint = nextStep.first;
+      
+      double invPdf = nextStep.second;
+      
+      Vec2D normal_prev = getNormal(previousPoint)[0];
+      
+      
+      
+      Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf);
+      
+      pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight);
+      
+      } else {
+      
+      pathWeight *= (1.0f / (1.0f - p_k));
+      
+      currentPoint = previousPoint;
+      
+      }
+   
+    }
+   
+   }
+   
+   
+   
+   return finalResult;
+   
+   }
+
+Vec2D getMixedConditionResultKernel9(Vec2D startingPoint, vector<Polyline> boundaryDirichlet,
+   vector<Polyline> boundaryNeumann, function<Vec2D (Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue,
+   function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
+
+    const float phi = 1.0f;
+    const float k = 4.0f;
+    const float p_k = 1/3;
+
+    Vec2D finalResult = Vec2D(0, 0);
+
     pair<Vec2D, double> firstStep = importanceSample(startingPoint);
     Vec2D currentPoint = firstStep.first;
     double invPdf_0 = firstStep.second;
@@ -1610,7 +1785,7 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
     for (int i = 0; i < maxDepth; i++) {
         // --- 1. ACCUMULATE RESULT ---
         // The last-step kernel should not be scaled by the PDF.
-        finalResult += matrixVectorMultiply(solutionUnknown(startingPoint, currentPoint, 1.0), pathWeight);
+        finalResult += matrixVectorMultiply(solutionUnknown(startingPoint, currentPoint, 1.0, boundaryDirichlet, boundaryNeumann), pathWeight);
 
       // --- 2. RUSSIAN ROULETTE ---
         const double absorptionProb = 0.2;
@@ -1639,7 +1814,7 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
                 Vec2D normal_prev = getNormal(previousPoint)[0];
 
                 Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf);
-                pathWeight = (invPdf / p_k) * matrixVectorMultiply(weightUpdate, pathWeight);
+                pathWeight = 1.0f / invPdf * matrixVectorMultiply(weightUpdate, pathWeight);
             } else {
                 pathWeight *= (1.0f / (1.0f - p_k));
                 currentPoint = previousPoint;
@@ -1650,6 +1825,72 @@ Vec2D getMixedConditionResultKernel7(Vec2D startingPoint, vector<Polyline> bound
     return finalResult;
 }
 
+Vec2D getCorrectMixedConditionResult(Vec2D startingPoint, vector<Polyline> boundaryDirichlet,
+   vector<Polyline> boundaryNeumann, function<Vec2D (Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue,
+   function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
+
+    const float phi = 1.0f;
+    const float k = 2.0f; // Using the balanced value, as discussed
+    const float p_k = 1.0f / 3.0f;
+
+    Vec2D finalResult = Vec2D(0, 0);
+
+    pair<Vec2D, double> firstStep = importanceSample(startingPoint); 
+    Vec2D currentPoint = firstStep.first;
+    double invPdf_0 = firstStep.second;
+
+    // The path weight is initialized with the source term, scaled by the first invPdf.
+    BoundaryType initialType = getBoundaryTypeAtPoint(currentPoint, boundaryDirichlet, boundaryNeumann);
+    Vec2D pathWeight;
+    if (initialType == BoundaryType::Neumann) {
+       pathWeight = invPdf_0 * (2.0f * phi * getNeumannValue(currentPoint, boundaryNeumann));
+    } else { // DIRICHLET
+       pathWeight = invPdf_0 * (k * getDirichletValue(currentPoint, boundaryDirichlet, displacedPoints));
+    }
+
+    thread_local std::mt19937 rng( std::random_device{}() );
+    std::uniform_real_distribution<double> uni01(0.0, 1.0);
+
+    // --- THE RANDOM WALK ---
+    for (int i = 0; i < maxDepth; i++) {
+        // --- 1. Accumulate Result ---
+        finalResult += matrixVectorMultiply(solutionUnknown(startingPoint, currentPoint, 1.0, boundaryDirichlet, boundaryNeumann), pathWeight);
+
+        // --- 2. Russian Roulette ---
+        const double absorptionProb = 0.2;
+        if (uni01(rng) < absorptionProb) {
+            break;
+        }
+        pathWeight *= (1.0f / (1.0f - absorptionProb));
+
+        // --- 3. Update Path Weight ---
+        Vec2D previousPoint = currentPoint;
+        BoundaryType currentType = getBoundaryTypeAtPoint(previousPoint, boundaryDirichlet, boundaryNeumann);
+
+        pair<Vec2D, double> nextStep = importanceSample(previousPoint);
+        currentPoint = nextStep.first;
+        double invPdf = nextStep.second;
+        Vec2D normal_prev = getNormal(previousPoint)[0];
+        
+        // Get the pure, unscaled kernel (assumes fredholm... does NOT multiply by invPdf)
+        Polyline transitionKernel = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf);
+
+        if (currentType == BoundaryType::Neumann) {
+            pathWeight = invPdf * matrixVectorMultiply(transitionKernel, pathWeight);
+        
+        } else { // DIRICHLET
+            if (uni01(rng) < p_k) {
+                // CORRECTED UPDATE:
+                pathWeight = (invPdf / p_k) * matrixVectorMultiply(transitionKernel, pathWeight);
+            } else {
+                pathWeight *= (1.0f / (1.0f - p_k));
+                currentPoint = previousPoint;
+            }
+        }
+    }
+
+    return finalResult;
+}
 // Vec2D getOneStepResult(Vec2D startingPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int depth, int maxDepth) {
 //    // startingPoint = sampleRectangleBoundary();
 //    Vec2D nextPoint = sampleRectangleBoundary();
@@ -1724,14 +1965,7 @@ void solveGradientWOB( Vec2D x0,
               vector<Polyline> boundaryNeumann,
               function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, std::ofstream& displacementFile, std::ofstream& gradientFile) { 
    const int nWalks = 100000; 
-   // Vec2D sumU = Vec2D(0.0, 0.0);
-   // int i = 0;
 
-   // #pragma omp parallel for reduction(+:sumU)
-   // for( i = 0; i < nWalks; i++ ) {
-   //    Vec2D uhat = getMixedConditionResultKernel7(x0, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 6);
-   //    sumU += uhat;
-   // } 
    Vec2D sumU = Vec2D(0, 0);
 
    for (int i = 0; i < nWalks; i++) {
@@ -1744,7 +1978,7 @@ void solveGradientWOB( Vec2D x0,
       // --- STEP 2: Estimate μ at that new point y ---
       // This is where you call your existing function.
       // NOTE: The 'startingPoint' for the μ walk is now 'y'.
-      Vec2D mu_at_y = getMixedConditionResultKernel7(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 6);
+      Vec2D mu_at_y = getMixedConditionResultKernel10(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 6);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
       vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
@@ -2022,7 +2256,7 @@ string double_to_str(double f) {
 }
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_mixed_48";
+   string shape = "lame_wob_mixed_50";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
