@@ -3,6 +3,8 @@
 ## 1. Overview
 This project implements a C++ solver for a 2D linear elasticity problem with mixed boundary conditions. It uses a Monte Carlo method known as Walk-on-Boundary (WoB) to calculate the displacement field of a 2D elastic body.
 
+**The implementation of this solver is located in `solver/gradientEstimateLame.cpp`.**
+
 The specific problem hard-coded in this solver is a unit square. The boundary conditions are:
 
 - **Dirichlet**: The left and right vertical sides are stretched horizontally. The left side is displaced by -0.1 in the x-direction, and the right side by +0.1.
@@ -63,3 +65,22 @@ This solver is configured for a specific geometry and problem setup. Many key pa
 
 ### 5.1. Compilation
 The code can be compiled from the command line using a C++17 compliant compiler (like g++ or clang++). You will need the Eigen library for linear algebra and OpenMP for parallelism.
+
+# Example compilation command on macOS with Homebrew
+c++ -std=c++17 -O3 -Wall -Xclang -fopenmp gradientEstimateLame.cpp -o gel -I /path/to/eigen/include -L /path/to/libomp/lib -lomp -w
+
+Replace /path/to/eigen/include and /path/to/libomp/lib with the correct paths for your system.
+
+In my case it is : c++ -std=c++17 -O3 -pedantic -Wall -Xclang -fopenmp gradientEstimateLame.cpp -o gel -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -I /opt/homebrew/opt/libomp/include -L /opt/homebrew/opt/libomp/lib -lomp -w
+
+5.2. Running
+The program takes no command-line arguments. It will run the simulation for a 16x16 grid of interior points.
+
+./gel
+
+5.3. Output
+The program will generate two output files in the ../output/ directory:
+
+lame_wob_xxx_displacements.csv: A CSV file containing the X and Y coordinates of each grid point and the calculated horizontal (dispX) and vertical (dispY) components of its displacement.
+
+lame_wob_xxx_displacement_gradient.csv: A CSV file containing the each value of the 2 by 2 displacement gradient. 
