@@ -1,6 +1,6 @@
 import meshio
 
-msh = meshio.read("notched_plate_dirichlet.msh")
+msh = meshio.read("notched_plate_mixed.msh")
 
 points_2d = msh.points[:, :2]
 
@@ -12,7 +12,7 @@ triangle_mesh = meshio.Mesh(
         "name_to_read": [msh.cell_data_dict["gmsh:physical"]["triangle"]]
     }
 )
-triangle_mesh.write("notched_plate_dirichlet_mesh.xdmf")
+triangle_mesh.write("notched_plate_mixed.xdmf")
 
 # Write facet tags (lines only)
 if "line" in msh.cells_dict:
@@ -23,6 +23,6 @@ if "line" in msh.cells_dict:
             "name_to_read": [msh.cell_data_dict["gmsh:physical"]["line"]]
         }
     )
-    facet_mesh.write("notched_plate_dirichlet_facet_region.xdmf")
+    facet_mesh.write("notched_plate_mixed_facet_region.xdmf")
 else:
     print("No line cells found for facets")

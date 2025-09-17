@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 # Lamé parameters
-lmbda = 100
-mu = 80
-filename = "gradient_estimate_dirichlet_without_notch_1_deformation_gradient"
+# lmbda = 100
+# mu = 80
+filename = "lame_wob_forward_zero_displacement_deformation_gradient"
 
 # Load CSV file
 data = pd.read_csv(f'../output/{filename}.csv')
@@ -19,11 +19,11 @@ dvdx = data['F21'].apply(pd.to_numeric, errors='coerce').to_numpy()
 dvdy = data['F22'].apply(pd.to_numeric, errors='coerce').to_numpy()
 
 # Compute strain components
-epsilon_xx = dudx
+epsilon_xx = dudx 
 epsilon_yy = dvdy
 epsilon_xy = 1/2 * (dudy + dvdx)
 
-E = 1.0
+E = 1.0 
 nu = 0.3
 mu = E / (2.0 * (1.0 + nu))
 lmbda = E * nu / ((1.0 + nu) * (1.0 - 2.0 * nu))
@@ -63,11 +63,12 @@ max_eigenvalues = np.array(max_eigenvalues)
 plt.figure(figsize=(12, 8))
 
 # Maximum Principal Stress (Highest Eigenvalue, original values)
-plt.scatter(x, y, c=max_eigenvalues, cmap='viridis', vmin=0.65, vmax=1.7)
+plt.scatter(x, y, c=max_eigenvalues, cmap='viridis', vmin=0.1, vmax=1.5)
 plt.colorbar(label='Maximum Principal Stress (Pa)')
 plt.title('Maximum Principal Stress Distribution (Bounded Plot)')
 plt.xlabel('x')
 plt.ylabel('y')
 
 plt.tight_layout()
+plt.autoscale(enable=True, axis='both', tight=True)
 plt.show()

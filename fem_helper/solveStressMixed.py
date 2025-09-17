@@ -52,11 +52,11 @@ def on_right(x):
 
 # Left: displacement (-1, 0)
 u_left = fem.Function(V)
-u_left.interpolate(lambda x: np.stack((-0.1 * np.ones_like(x[0]), np.zeros_like(x[1]))))
+u_left.interpolate(lambda x: np.stack((0 * np.ones_like(x[0]), np.zeros_like(x[1]))))
 
 # Right: displacement (1, 0)
 u_right = fem.Function(V)
-u_right.interpolate(lambda x: np.stack((0.1 * np.ones_like(x[0]), np.zeros_like(x[1]))))
+u_right.interpolate(lambda x: np.stack((0 * np.ones_like(x[0]), np.zeros_like(x[1]))))
 
 # Locate DOFs
 left_dofs = fem.locate_dofs_geometrical(V, on_left)
@@ -84,7 +84,7 @@ n = ufl.FacetNormal(domain)
 
 # Define a scalar pressure value (e.g., p=1.0). 
 # This will be applied inward on both surfaces.
-pressure = fem.Constant(domain, PETSc.ScalarType(0.1))
+pressure = fem.Constant(domain, PETSc.ScalarType(0))
 
 # Define the linear form L (the right-hand side of the weak form)
 # The traction vector is t = -p * n
