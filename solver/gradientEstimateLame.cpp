@@ -495,20 +495,7 @@ pair<Vec2D, double> importanceSample(Vec2D startingPoint){
    return make_pair(nan, 0);
 }
 
-Vec2D fredholmEquationKnown(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, float k){
-   if (isOnDirichlet(point, boundaryDirichlet, boundaryNeumann)){
-      return k * getDirichletValue(point, boundaryDirichlet, displacedPoints);
-   }
-   else {
-      double integralFreeTerm = 0.5;
-      if (isOnCorner(point, boundaryDirichlet, boundaryNeumann)) {
-         integralFreeTerm = 0.25;
-      }
-      return 1 / integralFreeTerm * getNeumannValue(point, boundaryNeumann);
-   }
-}
 
-// CORRECTED Traction Kernel
 vector<Vec2D> computeTractionKernel2D(Vec2D x, Vec2D y, Vec2D normal_y, double shearModulus, double poissonRatio) {
    // The vector r from the source 'y' to the field point 'x'
    Vec2D r_vec(real(x) - real(y), imag(x) - imag(y));
@@ -536,6 +523,21 @@ vector<Vec2D> computeTractionKernel2D(Vec2D x, Vec2D y, Vec2D normal_y, double s
    return { Vec2D(T11, T12), Vec2D(T21, T22) };
 }
 
+// This corresponds to the known value part in the BIE formulation
+Vec2D fredholmEquationKnown(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, float k){
+   if (isOnDirichlet(point, boundaryDirichlet, boundaryNeumann)){
+      return k * getDirichletValue(point, boundaryDirichlet, displacedPoints);
+   }
+   else {
+      double integralFreeTerm = 0.5;
+      if (isOnCorner(point, boundaryDirichlet, boundaryNeumann)) {
+         integralFreeTerm = 0.25;
+      }
+      return 1 / integralFreeTerm * getNeumannValue(point, boundaryNeumann);
+   }
+}
+
+// This correspondings to the unknwon integral part that needs recursive evaluation
 Polyline fredholmEquationUnknown(Vec2D startingPoint, Vec2D nextPoint, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann, Vec2D nextPointNormal, double invPdf, float k) {
    if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)){
       return -k * invPdf * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
@@ -549,6 +551,7 @@ Polyline fredholmEquationUnknown(Vec2D startingPoint, Vec2D nextPoint, vector<Po
    }
 }
 
+// for boundary point, on dirichlet boundaries, the value we solve for is known so returns a matrix of 0
 Polyline solutionBoundaryUnknown(Vec2D startingPoint, Vec2D nextPoint, double invPdf) {
    if (isOnDirichlet(startingPoint, boundaryDirichlet, boundaryNeumann)){
       return {Vec2D(0.0f, 0.0f), Vec2D(0.0f, 0.0f)};
@@ -558,6 +561,7 @@ Polyline solutionBoundaryUnknown(Vec2D startingPoint, Vec2D nextPoint, double in
    }
 }
 
+// for interior point
 Polyline solutionDomainUnknown(Vec2D startingPoint, Vec2D nextPoint, double invPdf) {
    return invPdf * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
 }
@@ -611,11 +615,8 @@ std::pair<Vec2D, double> importanceSampleBoundary(const Vec2D& x0, const std::ve
    // --- 5. Calculate the PDF and Inverse PDF ---
    double edgeLength = std::abs(endCorner - startCorner);
    
-   // pdf(point) = P(choosing edge) * pdf(choosing point on edge)
-   // pdf(choosing point on edge) is 1 / edgeLength for a uniform sample
    double pdf = edgeProbabilities[chosenEdgeIndex] / edgeLength;
    double invPdf = 1.0 / pdf;
-   
    return {sampledPoint, invPdf};
 }
 
@@ -624,7 +625,7 @@ Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline>
       function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
       const float phi = 1.0f;
-      const float k = 4.0f; // variable could be set by user 
+      const float k = 4.0f; // TODO: variable k could be set
       const float p_k = 1/3; 
 
       Vec2D finalResult = Vec2D(0, 0);
@@ -645,7 +646,7 @@ Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline>
          }
 
          // --- 1. ACCUMULATE RESULT ---
-         finalResult += matrixVectorMultiply(solutionBoundaryUnknown(startingPoint, currentPoint, 1.0), pathWeight);
+         finalResult += matrixVectorMultiply(solutionDomainUnknown(startingPoint, currentPoint, 1.0), pathWeight);
          
          // --- 2. RUSSIAN ROULETTE ---
          const double absorptionProb = 0.2;
@@ -667,6 +668,7 @@ Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline>
             pathWeight = matrixVectorMultiply(fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k), pathWeight);
          } else { // DIRICHLET
             Vec2D knownDirichletTerm = k * getDirichletValue(previousPoint, boundaryDirichlet, displacedPoints);
+            // Correspond to the indirect double to indirect single layer transformation mentioned in the paper
             if (uni01(rng) < p_k) {
                pair<Vec2D, double> nextStep = importanceSample(previousPoint);
                currentPoint = nextStep.first;
@@ -703,7 +705,7 @@ void solveGradientWOB( Vec2D x0,
       double invPdf = sample.second; // The inverse PDF for sampling y
 
       // --- STEP 2: Estimate μ at that new point y ---
-      // the last argument (max depth) could be set by user.
+      // TODO: the last argument (max depth) could be set by user.
       Vec2D mu_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 8);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
@@ -739,7 +741,8 @@ void solveGradientWOB( Vec2D x0,
 
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_forward_xxx";
+   // TODO:Change output name here
+   string shape = "lame_wob_forward_12";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
