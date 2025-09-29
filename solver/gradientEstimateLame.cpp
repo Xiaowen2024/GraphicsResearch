@@ -70,9 +70,7 @@ pair<Vec2D, double> sampleNeumannBoundary() {
 
 using Polyline = vector<Vec2D>;
 
-
 vector<Vec2D> tensor3DVec2DMultiply(const vector<vector<Vec2D>>& tensor, const Vec2D& vec) {
-
     // The result is a 2-element vector of Vec2D objects.
     vector<Vec2D> result(2, Vec2D(0.0, 0.0));
 
@@ -146,10 +144,9 @@ pair<Vec2D, double> rectangleBoundarySampler() {
    return make_pair(Vec2D{x, y},  1 / pdf);
 }
 
-
 vector<Polyline> boundaryDirichlet = {{ Vec2D(0, 1), Vec2D(0, 0)}, { Vec2D(1, 0), Vec2D(1, 1)}};
 vector<Polyline> boundaryNeumann =  {{ Vec2D(0, 0), Vec2D(1, 0)}, { Vec2D(1, 1), Vec2D(0, 1)}};
-vector<Polyline> displacedPoints =  {{  Vec2D(0, 1), Vec2D(0, 0)}, { Vec2D(1, 0), Vec2D(1, 1)}};
+vector<Polyline> displacedPoints =  {{  Vec2D(-0.1, 1), Vec2D(-0.1, 0)}, { Vec2D(1.1, 0), Vec2D(1.1, 1)}};
 
 std::vector<Vec2D> boundaryCorners = {
    {0.0, 0.0}, // Bottom-left
@@ -241,20 +238,20 @@ vector<Vec2D> getNormal(Vec2D point) {
    if (abs(imag(point) - 1) < tolerance) {
       normals.push_back(Vec2D(0, 1));
    }
-   if (isPointOnLine(point, Vec2D(0, 0), Vec2D(0.5, 0.2), tolerance)) {
-      Vec2D lineStart = Vec2D(0, 0);
-      Vec2D lineEnd = Vec2D(0.5, 0.2);
-      Vec2D lineDirection = lineEnd - lineStart;
-      Vec2D normal = Vec2D(imag(lineDirection), -real(lineDirection));
-      normals.push_back(normal);
-   } 
-   if (isPointOnLine(point, Vec2D(0.5, 0.2), Vec2D(1, 0), tolerance)) {
-      Vec2D lineStart = Vec2D(0.5, 0.2);
-      Vec2D lineEnd = Vec2D(1, 0);
-      Vec2D lineDirection = lineEnd - lineStart;
-      Vec2D normal = Vec2D(imag(lineDirection), -real(lineDirection));
-      normals.push_back(normal);
-   }
+   // if (isPointOnLine(point, Vec2D(0, 0), Vec2D(0.5, 0.2), tolerance)) {
+   //    Vec2D lineStart = Vec2D(0, 0);
+   //    Vec2D lineEnd = Vec2D(0.5, 0.2);
+   //    Vec2D lineDirection = lineEnd - lineStart;
+   //    Vec2D normal = Vec2D(imag(lineDirection), -real(lineDirection));
+   //    normals.push_back(normal);
+   // } 
+   // if (isPointOnLine(point, Vec2D(0.5, 0.2), Vec2D(1, 0), tolerance)) {
+   //    Vec2D lineStart = Vec2D(0.5, 0.2);
+   //    Vec2D lineEnd = Vec2D(1, 0);
+   //    Vec2D lineDirection = lineEnd - lineStart;
+   //    Vec2D normal = Vec2D(imag(lineDirection), -real(lineDirection));
+   //    normals.push_back(normal);
+   // }
    return normals;
 }
 
@@ -264,10 +261,10 @@ Vec2D getNeumannValue( Vec2D point, vector<Polyline> boundaryNeumann) {
    const double tolerance = 1e-5; // Define a small tolerance for comparison
    // Check if the point is on the Neumann boundary
    if (abs(imag(point) - 1) < tolerance) {
-      return Vec2D(0, 0);
+      return Vec2D(0, -0.1);
    }
    else if (abs(imag(point)) < tolerance) {
-      return Vec2D(0, 0);
+      return Vec2D(0, 0.1);
    }
    else if (abs(real(point)) < tolerance) {
       return Vec2D(0, 0);
@@ -376,8 +373,6 @@ double poissonRatio = 0.3;
 double E = 1.0;
 double mu = E / (2.0 * (1.0 + poissonRatio));
 static bool hasPrintedGlobal = false; 
-
-
 
 bool isOnCorner(Vec2D point, vector<Polyline> boundaryDirichlet, vector<Polyline> boundaryNeumann) {
    const double tolerance = 1e-4;
@@ -625,7 +620,7 @@ Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline>
       function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
       const float phi = 1.0f;
-      const float k = 4.0f; // TODO: variable k could be set
+      const float k = 3.0f; // TODO: variable k could be set
       const float p_k = 1/3; 
 
       Vec2D finalResult = Vec2D(0, 0);
@@ -675,9 +670,9 @@ Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline>
                double invPdf = nextStep.second;
                Vec2D normal_prev = getNormal(previousPoint)[0];
                Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k);
-               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight) + knownDirichletTerm;
+               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight);// + knownDirichletTerm;
             } else {
-               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight + knownDirichletTerm;
+               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight;// + knownDirichletTerm;
                currentPoint = previousPoint;
             }
          }
@@ -690,7 +685,7 @@ void solveGradientWOB( Vec2D x0,
               vector<Polyline> boundaryDirichlet, 
               vector<Polyline> boundaryNeumann,
               function<Vec2D(Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue, function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, std::ofstream& displacementFile, std::ofstream& gradientFile) { 
-   const int nWalks = 500000; 
+   const int nWalks = 100000; 
    Vec2D sumU = Vec2D(0.0, 0.0);
    vector<Vec2D> sumGradient = {Vec2D(0.0, 0.0), Vec2D(0.0, 0.0)};
    int i = 0;
@@ -706,7 +701,7 @@ void solveGradientWOB( Vec2D x0,
 
       // --- STEP 2: Estimate μ at that new point y ---
       // TODO: the last argument (max depth) could be set by user.
-      Vec2D mu_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 8);
+      Vec2D mu_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 3);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
       vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
@@ -739,10 +734,9 @@ void solveGradientWOB( Vec2D x0,
    gradientFile << real(sumGradient[1]) /nWalks  << "," << imag(sumGradient[1])/nWalks << "\n";
 }
 
-
 int main( int argc, char** argv ) {
-   // TODO:Change output name here
-   string shape = "lame_wob_forward_12";
+   // TODO: Change output name here
+   string shape = "lame_wob_forward_17";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
