@@ -615,21 +615,23 @@ std::pair<Vec2D, double> importanceSampleBoundary(const Vec2D& x0, const std::ve
    return {sampledPoint, invPdf};
 }
 
-Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline> boundaryDirichlet,
+Vec2D getMixedConditionResultKernelForward(Vec2D evaluationPoint, Vec2D startingPoint, float invPDF, vector<Polyline> boundaryDirichlet,
       vector<Polyline> boundaryNeumann, function<Vec2D (Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue,
       function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
       const float phi = 1.0f;
-      const float k = 3.0f; // TODO: variable k could be set
+      const float k = 2.0f; // TODO: variable k could be set
       const float p_k = 1/3; 
 
       Vec2D finalResult = Vec2D(0, 0);
 
       // --- INITIALIZATION ---
       thread_local std::mt19937 rng(std::random_device{}());
-      pair<Vec2D, double> firstStep = rectangleBoundarySampler(); // (startingPoint, boundaryCorners, rng);
-      Vec2D currentPoint = firstStep.first;
-      double invPdf_0 = firstStep.second;
+    //   pair<Vec2D, double> firstStep = rectangleBoundarySampler(); // (startingPoint, boundaryCorners, rng);
+    //   Vec2D currentPoint = firstStep.first;
+    //   double invPdf_0 = firstStep.second;
+      Vec2D currentPoint = startingPoint;
+      double invPdf_0 = invPDF;
       BoundaryType initialType = getBoundaryTypeAtPoint(currentPoint, boundaryDirichlet, boundaryNeumann);
       Vec2D pathWeight = invPdf_0 * fredholmEquationKnown(currentPoint, boundaryDirichlet, boundaryNeumann, k);
 
@@ -641,7 +643,7 @@ Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline>
          }
 
          // --- 1. ACCUMULATE RESULT ---
-         finalResult += matrixVectorMultiply(solutionDomainUnknown(startingPoint, currentPoint, 1.0), pathWeight);
+         finalResult += matrixVectorMultiply(solutionDomainUnknown(evaluationPoint, currentPoint, 1.0), pathWeight);
          
          // --- 2. RUSSIAN ROULETTE ---
          const double absorptionProb = 0.2;
@@ -670,9 +672,9 @@ Vec2D getMixedConditionResultKernelForward(Vec2D startingPoint, vector<Polyline>
                double invPdf = nextStep.second;
                Vec2D normal_prev = getNormal(previousPoint)[0];
                Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k);
-               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight) + knownDirichletTerm;
+               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight); // + knownDirichletTerm;
             } else {
-               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight + knownDirichletTerm;
+               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight;// + knownDirichletTerm;
                currentPoint = previousPoint;
             }
          }
@@ -695,26 +697,26 @@ void solveGradientWOB( Vec2D x0,
       // --- STEP 1: Sample a new point 'y' on the boundary ---
       // This is the Monte Carlo integration step for u = ∫ Γμ dA.
       thread_local std::mt19937 rng(std::random_device{}() + i);
-      pair<Vec2D, double> sample = importanceSampleBoundary(x0, boundaryCorners, rng);
+      pair<Vec2D, double> sample = rectangleBoundarySampler();// importanceSampleBoundary(x0, boundaryCorners, rng);
       Vec2D y = sample.first;      // A random point on the boundary
       double invPdf = sample.second; // The inverse PDF for sampling y
 
       // --- STEP 2: Estimate μ at that new point y ---
       // TODO: the last argument (max depth) could be set by user.
-      Vec2D mu_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 4);
+      Vec2D mu_at_y = getMixedConditionResultKernelForward(x0, y, invPdf, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 2);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
-    //   vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
+      vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
 
-    //   vector<Polyline> gradient = kelvinKernelGradient(mu, poissonRatio, x0 - y);
+      vector<Polyline> gradient = kelvinKernelGradient(mu, poissonRatio, x0 - y);
       
       // // --- STEP 4: Combine everything to get one sample of u ---
-    //   Vec2D u_sample = invPdf * matrixVectorMultiply(kelvin_kernel, mu_at_y);
-    //   vector<Vec2D> gradient_sample = invPdf * tensor3DVec2DMultiply(gradient, mu_at_y);
+      //   Vec2D u_sample = invPdf * matrixVectorMultiply(kelvin_kernel, mu_at_y);
+      vector<Vec2D> gradient_sample = tensor3DVec2DMultiply(gradient, mu_at_y);
 
       sumU += mu_at_y;
-    //   sumGradient[0] += gradient_sample[0];
-    //   sumGradient[1] += gradient_sample[1];
+      sumGradient[0] += gradient_sample[0];
+      sumGradient[1] += gradient_sample[1];
    }
 
    displacementFile << real(x0) << "," << imag(x0) << ",";
@@ -736,7 +738,7 @@ void solveGradientWOB( Vec2D x0,
 
 int main( int argc, char** argv ) {
    // TODO: Change output name here
-   string shape = "lame_wob_adjoint_test";
+   string shape = "lame_wob_adjoint_7";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
