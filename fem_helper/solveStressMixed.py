@@ -52,11 +52,11 @@ def on_right(x):
 
 # Left: displacement (-1, 0)
 u_left = fem.Function(V)
-u_left.interpolate(lambda x: np.stack((0 * np.ones_like(x[0]), np.zeros_like(x[1]))))
+u_left.interpolate(lambda x: np.stack((-0.1 * np.ones_like(x[0]), np.zeros_like(x[1]))))
 
 # Right: displacement (1, 0)
 u_right = fem.Function(V)
-u_right.interpolate(lambda x: np.stack((0 * np.ones_like(x[0]), np.zeros_like(x[1]))))
+u_right.interpolate(lambda x: np.stack((0.1 * np.ones_like(x[0]), np.zeros_like(x[1]))))
 
 # Locate DOFs
 left_dofs = fem.locate_dofs_geometrical(V, on_left)
@@ -91,10 +91,10 @@ pressure = fem.Constant(domain, PETSc.ScalarType(0))
 # The contribution to the weak form is integral(dot(t, v)*ds)
 
 # Contribution from the top boundary (marked as 3)
-L_top = ufl.dot(-pressure * n, v) * ds(3)
+L_top = ufl.dot(pressure * n, v) * ds(3)
 
 # Contribution from the bottom boundary (marked as 1)
-L_bottom = ufl.dot(-pressure * n, v) * ds(1)
+L_bottom = ufl.dot(pressure * n, v) * ds(1)
 
 # Total linear form
 L = L_top + L_bottom
@@ -181,13 +181,13 @@ filtered_grid = u_grid.extract_points(mask, adjacent_cells=True)
 plotter_ux = pyvista.Plotter(title="u_x")
 plotter_ux.add_mesh(filtered_grid.copy(), scalars="u_x", show_edges=True)
 plotter_ux.view_xy()
-plotter_ux.show()
+# plotter_ux.show()
 
 # Plot u_y
 plotter_uy = pyvista.Plotter(title="u_y")
 plotter_uy.add_mesh(filtered_grid.copy(), scalars="u_y", show_edges=True)
 plotter_uy.view_xy()
-plotter_uy.show()
+# plotter_uy.show()
 
 elementStress = element("DG", domain.ufl_cell().cellname(), 0, shape=(dim, dim))
 W = fem.functionspace(domain, elementStress)
@@ -281,7 +281,7 @@ plotter.view_xy()
 # plotter.view_xy()
 
 # plotter.link_views()
-plotter.show()
+# plotter.show()
 # Create plotter for displaced shape
 # 1. Choose a scaling factor for visualization (10 is common for exaggeration)
 scale = 1.0
@@ -301,8 +301,86 @@ displacement_magnitude = np.linalg.norm(u_values, axis=1)
 u_grid.point_data["|u|"] = displacement_magnitude
 
 # 6. Plot
-plotter = pyvista.Plotter(title="Deformed Mesh")
-plotter.add_text(f"Deformed (scale={scale})", font_size=12)
-plotter.add_mesh(u_grid.copy(), scalars="|u|", show_edges=True, cmap="plasma")
-plotter.view_xy()
-plotter.show()
+# plotter = pyvista.Plotter(title="Deformed Mesh")
+# plotter.add_text(f"Deformed (scale={scale})", font_size=12)
+# plotter.add_mesh(u_grid.copy(), scalars="|u|", show_edges=True, cmap="plasma")
+# plotter.view_xy()
+# plotter.show()
+
+import dolfinx.geometry 
+
+tensor_element = element("DG", domain.ufl_cell().cellname(), 1, shape=(dim, dim))
+W_grad = fem.functionspace(domain, tensor_element)
+
+# 2. Interpolate the gradient of the displacement solution `uh` into the new space
+grad_uh = ufl.grad(uh)
+grad_u_func = fem.Function(W_grad)
+grad_expr = fem.Expression(grad_uh, W_grad.element.interpolation_points())
+grad_u_func.interpolate(grad_expr)
+
+# 3. Define the points where you want to evaluate the gradient
+# NOTE: Ensure these points are within your mesh boundaries.
+points_to_sample = np.array([
+    # Centerline points (x=0.5)
+    [0.5, 0.9, 0.0],   # Top center
+    [0.5, 0.5, 0.0],   # Center of the plate
+    [0.5, 0.2, 0.0],   # Above the notch
+    [0.5, 0.02, 0.0],  # Near the notch tip (high stress)
+    
+    # Points near boundaries
+    [0.1, 0.5, 0.0],   # Near left boundary
+    [0.9, 0.5, 0.0],   # Near right boundary
+    
+    # Corner regions
+    [0.2, 0.8, 0.0],   # Top-left region
+    [0.8, 0.8, 0.0],   # Top-right region
+    [0.2, 0.2, 0.0],   # Bottom-left region
+    [0.8, 0.2, 0.0],   # Bottom-right region
+    
+    [0.0666667, 0.0666667,  0.0],
+    [0.533333, 0.0666667,  0.0]
+])
+# 4. Find which cells contain these points for evaluation
+# This is necessary for dolfinx to know where to get the data from
+bb_tree = dolfinx.geometry.bb_tree(domain, domain.topology.dim)
+cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points_to_sample)
+colliding_cells = dolfinx.geometry.compute_colliding_cells(domain, cell_candidates, points_to_sample)
+
+# 5. Evaluate the gradient at the points found on the current MPI process
+points_on_proc = []
+cells_for_eval = []
+for i, point in enumerate(points_to_sample):
+    if len(colliding_cells.links(i)) > 0:
+        points_on_proc.append(point)
+        cells_for_eval.append(colliding_cells.links(i)[0])
+
+points_on_proc_np = np.array(points_on_proc, dtype=np.float64)
+
+if len(points_on_proc_np) > 0:
+    # `eval` returns a flattened array, so we reshape it to (num_points, 2, 2)
+    grad_values = grad_u_func.eval(points_on_proc_np, cells_for_eval).reshape(-1, dim, dim)
+else:
+    # No points on this process, create empty arrays
+    grad_values = np.empty((0, dim, dim))
+
+# 6. Gather results on the root process (rank 0) and save to a file
+comm = MPI.COMM_WORLD
+all_points = comm.gather(points_on_proc_np, root=0)
+all_grads = comm.gather(grad_values, root=0)
+
+if comm.rank == 0:
+    output_filename = "displacement_gradient.txt"
+    with open(output_filename, "w") as f:
+        f.write("# Displacement Gradient Tensor G_ij = du_i / dx_j\n")
+        f.write("# Each entry corresponds to a sampled point.\n")
+        f.write("-" * 60 + "\n\n")
+
+        # Iterate through data gathered from all processes
+        for points_batch, grads_batch in zip(all_points, all_grads):
+            for point, grad_tensor in zip(points_batch, grads_batch):
+                f.write(f"Point (x, y): ({point[0]:.4f}, {point[1]:.4f})\n")
+                f.write(f"Gradient Tensor G:\n")
+                f.write(f"  [[{grad_tensor[0, 0]: .6e}, {grad_tensor[0, 1]: .6e}],\n")
+                f.write(f"   [{grad_tensor[1, 0]: .6e}, {grad_tensor[1, 1]: .6e}]]\n\n")
+
+    print(f"✅ Displacement gradients saved to '{output_filename}'")
