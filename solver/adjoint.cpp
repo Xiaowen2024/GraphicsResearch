@@ -49,6 +49,26 @@ inline vector<Vec2D> operator*(double scalar, const vector<Vec2D>& vec) {
    return result;
 }
 
+// Helper function for scalar multiplication with nested vector structures
+inline std::vector<std::vector<Vec2D>> operator*(double scalar, const std::vector<std::vector<Vec2D>>& tensor) {
+   std::vector<std::vector<Vec2D>> result;
+   for (const auto& row : tensor) {
+      result.push_back(scalar * row);
+   }
+   return result;
+}
+
+// Helper function for element-wise addition of vector<Vec2D> (Polyline)
+inline vector<Vec2D>& operator+=(vector<Vec2D>& lhs, const vector<Vec2D>& rhs) {
+   if (lhs.size() != rhs.size()) {
+      throw std::invalid_argument("Vector sizes must match for element-wise addition");
+   }
+   for (size_t i = 0; i < lhs.size(); ++i) {
+      lhs[i] += rhs[i];
+   }
+   return lhs;
+}
+
 pair<Vec2D, double> sampleNeumannBoundary() {
    // Sample a point on the Neumann boundary and return its PDF
    static std::random_device rd;   // Seed generator (non-deterministic)
@@ -261,10 +281,10 @@ Vec2D getNeumannValue( Vec2D point, vector<Polyline> boundaryNeumann) {
    const double tolerance = 1e-5; // Define a small tolerance for comparison
    // Check if the point is on the Neumann boundary
    if (abs(imag(point) - 1) < tolerance) {
-      return Vec2D(0, -0.1);
+      return Vec2D(0, 0);
    }
    else if (abs(imag(point)) < tolerance) {
-      return Vec2D(0, 0.1);
+      return Vec2D(0, 0);
    }
    else if (abs(real(point)) < tolerance) {
       return Vec2D(0, 0);
@@ -311,63 +331,94 @@ vector<Vec2D> kelvinKernel(double shearModulus, double poissonRatio, Vec2D x_min
    return { Vec2D(k11, k12), Vec2D(k21, k22) };
 }
 
-std::vector<std::vector<Vec2D>> kelvinKernelGradient(double shearModulus, double poissonRatio, Vec2D x_minus_y) {
-   // The vector r in the formula is y - x. Here we are given x - y.
-   // So, r = -x_minus_y.
-   Vec2D r(-real(x_minus_y), -imag(x_minus_y));
+std::vector<Vec2D> calculateDisplacementGradient(
+    const std::vector<std::vector<Vec2D>>& gradient_kernel,
+    const Vec2D& phi)
+{
+    // This will hold the final 2x2 gradient tensor, where result[i] is the i-th row.
+    std::vector<Vec2D> result(2, Vec2D(0.0, 0.0));
 
-   double r_sq = std::norm(r); // For complex numbers, norm(r) is real(r)^2 + imag(r)^2
-   if (r_sq < 1e-12) {
-       return {{Vec2D(0,0), Vec2D(0,0)}, {Vec2D(0,0), Vec2D(0,0)}};
-   }
+    double phi_0 = phi.real(); // component j=0 of the density vector
+    double phi_1 = phi.imag(); // component j=1 of the density vector
 
-   // This constant is different from the Kelvin kernel itself.
-   // This is the derivative of the Kelvin Kernel from the original paper.
-   double constant_factor = 1.0 / (4.0 * M_PI * shearModulus * (1.0 - poissonRatio));
-   double C1 = (3.0 - 4.0 * poissonRatio);
-   double C2 = 1.0; 
+    // Let F_ik = ∂u_i/∂x_k.
+    // The formula is: F_ik = Σ_j (∂G_ij/∂x_k) * φ_j
+    // gradient_kernel[i][j] = (∂G_ij/∂x_0, ∂G_ij/∂x_1)
 
-   // Pre-calculate common terms
-   double r_x = real(r);
-   double r_y = imag(r);
-   double r_pow2_inv = 1.0 / r_sq;
-   double r_pow4_inv = r_pow2_inv * r_pow2_inv;
+    // --- Calculate the first row of the gradient (i=0) ---
+    // Component F_00 (k=0, derivative w.r.t. x)
+    double F00 = gradient_kernel[0][0].real() * phi_0 + gradient_kernel[0][1].real() * phi_1;
+    // Component F_01 (k=1, derivative w.r.t. y)
+    double F01 = gradient_kernel[0][0].imag() * phi_0 + gradient_kernel[0][1].imag() * phi_1;
+    result[0] = Vec2D(F00, F01);
 
-   std::vector<std::vector<Vec2D>> dU_dy(2, std::vector<Vec2D>(2));
+    // --- Calculate the second row of the gradient (i=1) ---
+    // Component F_10 (k=0, derivative w.r.t. x)
+    double F10 = gradient_kernel[1][0].real() * phi_0 + gradient_kernel[1][1].real() * phi_1;
+    // Component F_11 (k=1, derivative w.r.t. y)
+    double F11 = gradient_kernel[1][0].imag() * phi_0 + gradient_kernel[1][1].imag() * phi_1;
+    result[1] = Vec2D(F10, F11);
 
-   for (int i = 0; i < 2; ++i) {
-       for (int j = 0; j < 2; ++j) {
-           // Helper values for r_i and r_j
-           double ri = (i == 0) ? r_x : r_y;
-           double rj = (j == 0) ? r_x : r_y;
-           
-           // Derivative w.r.t. y_x (k=0)
-           double delta_ij = (i == j) ? 1.0 : 0.0;
-           double delta_ik = (i == 0) ? 1.0 : 0.0; // k=0 for y_x derivative
-           double delta_jk = (j == 0) ? 1.0 : 0.0;
-           double rk = r_x;
-           
-           double term1_dx = -C1 * delta_ij * rk * r_pow2_inv;
-           double term2_dx = C2 * ((delta_ik * rj + ri * delta_jk) * r_pow2_inv - 2 * ri * rj * rk * r_pow4_inv);
-           double dU_ij_dyx = constant_factor * (term1_dx + term2_dx);
-           
-           // Derivative w.r.t. y_y (k=1)
-           delta_ik = (i == 1) ? 1.0 : 0.0; // k=1 for y_y derivative
-           delta_jk = (j == 1) ? 1.0 : 0.0;
-           rk = r_y;
-
-           double term1_dy = -C1 * delta_ij * rk * r_pow2_inv;
-           double term2_dy = C2 * ((delta_ik * rj + ri * delta_jk) * r_pow2_inv - 2 * ri * rj * rk * r_pow4_inv);
-           double dU_ij_dyy = constant_factor * (term1_dy + term2_dy);
-           
-           dU_dy[i][j] = Vec2D(dU_ij_dyx, dU_ij_dyy);
-       }
-   }
-
-   return dU_dy;
+    return result;
 }
 
+std::vector<std::vector<Vec2D>> kelvinKernelGradient(double shearModulus, double poissonRatio, Vec2D x_minus_y) {
+    // For gradient wrt y, we use r = y - x = -(x - y)
+    Vec2D r(-real(x_minus_y), -imag(x_minus_y));
 
+    double r_sq = std::norm(r);
+    if (r_sq < 1e-12) {
+        return {{Vec2D(0,0), Vec2D(0,0)}, {Vec2D(0,0), Vec2D(0,0)}};
+    }
+
+    // Plane strain Kelvin kernel gradient constant
+    double constant_factor = 1.0 / (8.0 * M_PI * shearModulus * (1.0 - poissonRatio));
+    double C1 = (3.0 - 4.0 * poissonRatio);
+    double C2 = 1.0;
+
+    double r_x = real(r);
+    double r_y = imag(r);
+    double r_pow2_inv = 1.0 / r_sq;
+    double r_pow4_inv = r_pow2_inv * r_pow2_inv;
+
+    std::vector<std::vector<Vec2D>> dU_dy(2, std::vector<Vec2D>(2));
+
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            double ri = (i == 0) ? r_x : r_y;
+            double rj = (j == 0) ? r_x : r_y;
+            double delta_ij = (i == j) ? 1.0 : 0.0;
+
+            // Derivative w.r.t y_x (k=0)
+            {
+                double delta_ik = (i == 0);
+                double delta_jk = (j == 0);
+                double rk = r_x;
+
+                double term1 = -C1 * delta_ij * rk * r_pow2_inv;
+                double term2 = C2 * ((delta_ik * rj + ri * delta_jk) * r_pow2_inv
+                                    - 2 * ri * rj * rk * r_pow4_inv);
+
+                dU_dy[i][j].real(constant_factor * (term1 + term2));
+            }
+
+            // Derivative w.r.t y_y (k=1)
+            {
+                double delta_ik = (i == 1);
+                double delta_jk = (j == 1);
+                double rk = r_y;
+
+                double term1 = -C1 * delta_ij * rk * r_pow2_inv;
+                double term2 = C2 * ((delta_ik * rj + ri * delta_jk) * r_pow2_inv
+                                    - 2 * ri * rj * rk * r_pow4_inv); // changed sign here
+
+                dU_dy[i][j].imag(constant_factor * (term1 + term2));
+            }
+        }
+    }
+
+    return dU_dy;
+}
 
 double poissonRatio = 0.3; 
 double E = 1.0;
@@ -561,6 +612,10 @@ Polyline solutionDomainUnknown(Vec2D startingPoint, Vec2D nextPoint, double invP
    return invPdf * kelvinKernel(mu, poissonRatio, startingPoint - nextPoint);
 }
 
+std::vector<std::vector<Vec2D>> gradientDomainUnknown(Vec2D startingPoint, Vec2D nextPoint, double invPdf) {
+   return invPdf * kelvinKernelGradient(mu, poissonRatio, startingPoint - nextPoint);
+}
+
 std::pair<Vec2D, double> importanceSampleBoundary(const Vec2D& x0, const std::vector<Vec2D>& boundaryCorners, std::mt19937& rng) {
    int numCorners = boundaryCorners.size();
    if (numCorners < 2) {
@@ -615,23 +670,24 @@ std::pair<Vec2D, double> importanceSampleBoundary(const Vec2D& x0, const std::ve
    return {sampledPoint, invPdf};
 }
 
-Vec2D getMixedConditionResultKernelForward(Vec2D evaluationPoint, Vec2D startingPoint, float invPDF, vector<Polyline> boundaryDirichlet,
+Vec2D getMixedConditionResultKernelForward( Vec2D startingPoint, vector<Polyline> boundaryDirichlet,
       vector<Polyline> boundaryNeumann, function<Vec2D (Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue,
       function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
       const float phi = 1.0f;
-      const float k = 2.0f; // TODO: variable k could be set
+      const float k = 3.0f; // TODO: variable k could be set
       const float p_k = 1/3; 
 
       Vec2D finalResult = Vec2D(0, 0);
+      Polyline finalGradientResult = {Vec2D(0, 0), Vec2D(0, 0)};
 
       // --- INITIALIZATION ---
       thread_local std::mt19937 rng(std::random_device{}());
-    //   pair<Vec2D, double> firstStep = rectangleBoundarySampler(); // (startingPoint, boundaryCorners, rng);
-    //   Vec2D currentPoint = firstStep.first;
-    //   double invPdf_0 = firstStep.second;
-      Vec2D currentPoint = startingPoint;
-      double invPdf_0 = invPDF;
+      pair<Vec2D, double> firstStep = rectangleBoundarySampler(); // (startingPoint, boundaryCorners, rng);
+      Vec2D currentPoint = firstStep.first;
+      double invPdf_0 = firstStep.second;
+      // Vec2D currentPoint = startingPoint;
+      // double invPdf_0 = invPDF;
       BoundaryType initialType = getBoundaryTypeAtPoint(currentPoint, boundaryDirichlet, boundaryNeumann);
       Vec2D pathWeight = invPdf_0 * fredholmEquationKnown(currentPoint, boundaryDirichlet, boundaryNeumann, k);
 
@@ -643,8 +699,10 @@ Vec2D getMixedConditionResultKernelForward(Vec2D evaluationPoint, Vec2D starting
          }
 
          // --- 1. ACCUMULATE RESULT ---
-         finalResult += matrixVectorMultiply(solutionDomainUnknown(evaluationPoint, currentPoint, 1.0), pathWeight);
-         
+         finalResult += matrixVectorMultiply(solutionDomainUnknown(startingPoint, currentPoint, 1.0), pathWeight);
+        //  vector<vector<Vec2D>> gradient_sample = gradientDomainUnknown(startingPoint, currentPoint, 1.0);
+        //  finalGradientResult += tensor3DVec2DMultiply(gradient_sample, pathWeight); 
+
          // --- 2. RUSSIAN ROULETTE ---
          const double absorptionProb = 0.2;
          if (uni01(rng) < absorptionProb) {
@@ -672,15 +730,86 @@ Vec2D getMixedConditionResultKernelForward(Vec2D evaluationPoint, Vec2D starting
                double invPdf = nextStep.second;
                Vec2D normal_prev = getNormal(previousPoint)[0];
                Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k);
-               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight); // + knownDirichletTerm;
+               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight) + knownDirichletTerm;
             } else {
-               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight;// + knownDirichletTerm;
+               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight + knownDirichletTerm;
                currentPoint = previousPoint;
             }
          }
       }
 
       return finalResult;
+}
+
+pair<Vec2D, vector<Vec2D>> getDisplacementAndGradientForward( Vec2D startingPoint, vector<Polyline> boundaryDirichlet,
+      vector<Polyline> boundaryNeumann, function<Vec2D (Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue,
+      function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
+
+      const float phi = 1.0f;
+      const float k = 4.0f; // TODO: variable k could be set
+      const float p_k = 1/3; 
+
+      Vec2D finalResult = Vec2D(0, 0);
+      Polyline finalGradientResult = {Vec2D(0, 0), Vec2D(0, 0)};
+
+      // --- INITIALIZATION ---
+      thread_local std::mt19937 rng(std::random_device{}());
+      pair<Vec2D, double> firstStep = rectangleBoundarySampler(); // (startingPoint, boundaryCorners, rng);
+      Vec2D currentPoint = firstStep.first;
+      double invPdf_0 = firstStep.second;
+      // Vec2D currentPoint = startingPoint;
+      // double invPdf_0 = invPDF;
+      BoundaryType initialType = getBoundaryTypeAtPoint(currentPoint, boundaryDirichlet, boundaryNeumann);
+      Vec2D pathWeight = invPdf_0 * fredholmEquationKnown(currentPoint, boundaryDirichlet, boundaryNeumann, k);
+
+      std::uniform_real_distribution<double> uni01(0.0, 1.0);
+      // --- THE RANDOM WALK ON THE BOUNDARY ---
+      for (int i = 0; i < maxDepth; i++) {
+         if (i == maxDepth - 1){
+            pathWeight = 0.5 * pathWeight;
+         }
+
+         // --- 1. ACCUMULATE RESULT ---
+         finalResult += matrixVectorMultiply(solutionDomainUnknown(startingPoint, currentPoint, 1.0), pathWeight);
+         vector<vector<Vec2D>> gradient_sample = gradientDomainUnknown(startingPoint, currentPoint, 1.0);
+         finalGradientResult += tensor3DVec2DMultiply(gradient_sample, pathWeight); 
+
+         // --- 2. RUSSIAN ROULETTE ---
+         const double absorptionProb = 0.2;
+         if (uni01(rng) < absorptionProb) {
+            break;
+         }
+
+         pathWeight *= (1.0f / (1.0f - absorptionProb));
+
+         // --- 3. UPDATE PATH WEIGHT ---
+         Vec2D previousPoint = currentPoint;
+         BoundaryType currentType = getBoundaryTypeAtPoint(previousPoint, boundaryDirichlet, boundaryNeumann);
+
+         if (currentType == BoundaryType::Neumann) {
+            pair<Vec2D, double> nextStep = importanceSample(previousPoint);
+            currentPoint = nextStep.first;
+            double invPdf = nextStep.second;
+            Vec2D normal_prev = getNormal(previousPoint)[0];
+            pathWeight = matrixVectorMultiply(fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k), pathWeight);
+         } else { // DIRICHLET
+            Vec2D knownDirichletTerm = k * getDirichletValue(previousPoint, boundaryDirichlet, displacedPoints);
+            // Correspond to the indirect double to indirect single layer transformation mentioned in the paper
+            if (uni01(rng) < p_k) {
+               pair<Vec2D, double> nextStep = importanceSample(previousPoint);
+               currentPoint = nextStep.first;
+               double invPdf = nextStep.second;
+               Vec2D normal_prev = getNormal(previousPoint)[0];
+               Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k);
+               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight) + knownDirichletTerm;
+            } else {
+               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight + knownDirichletTerm;
+               currentPoint = previousPoint;
+            }
+         }
+      }
+
+      return {finalResult, finalGradientResult};
 }
 
 void solveGradientWOB( Vec2D x0,
@@ -697,24 +826,23 @@ void solveGradientWOB( Vec2D x0,
       // --- STEP 1: Sample a new point 'y' on the boundary ---
       // This is the Monte Carlo integration step for u = ∫ Γμ dA.
       thread_local std::mt19937 rng(std::random_device{}() + i);
-      pair<Vec2D, double> sample = rectangleBoundarySampler();// importanceSampleBoundary(x0, boundaryCorners, rng);
+      pair<Vec2D, double> sample =  rectangleBoundarySampler(); //importanceSampleBoundary(x0, boundaryCorners, rng);
       Vec2D y = sample.first;      // A random point on the boundary
       double invPdf = sample.second; // The inverse PDF for sampling y
 
       // --- STEP 2: Estimate μ at that new point y ---
-      // TODO: the last argument (max depth) could be set by user.
-      Vec2D mu_at_y = getMixedConditionResultKernelForward(x0, y, invPdf, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 2);
+      Vec2D phi_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 4);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
       vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
 
       vector<Polyline> gradient = kelvinKernelGradient(mu, poissonRatio, x0 - y);
       
-      // // --- STEP 4: Combine everything to get one sample of u ---
-      //   Vec2D u_sample = invPdf * matrixVectorMultiply(kelvin_kernel, mu_at_y);
-      vector<Vec2D> gradient_sample = tensor3DVec2DMultiply(gradient, mu_at_y);
+      // --- STEP 4: Combine everything to get one sample of u ---
+      Vec2D u_sample = matrixVectorMultiply(kelvin_kernel, phi_at_y);
+      vector<Vec2D> gradient_sample = tensor3DVec2DMultiply(gradient, phi_at_y);
 
-      sumU += mu_at_y;
+      sumU += u_sample;
       sumGradient[0] += gradient_sample[0];
       sumGradient[1] += gradient_sample[1];
    }
@@ -722,7 +850,7 @@ void solveGradientWOB( Vec2D x0,
    displacementFile << real(x0) << "," << imag(x0) << ",";
    if (isnan(real(sumU)/nWalks) || isnan(imag(sumU)/nWalks)) {
       cout << "Nan value encountered at x0: " << real(x0) << ", " << imag(x0) << endl;
-   }
+   } 
    displacementFile << real(sumU) /nWalks  << "," << imag(sumU)/nWalks << "\n";
 
    gradientFile << real(x0) << "," << imag(x0) << ",";
@@ -737,8 +865,7 @@ void solveGradientWOB( Vec2D x0,
 }
 
 int main( int argc, char** argv ) {
-   // TODO: Change output name here
-   string shape = "lame_wob_adjoint_7";
+   string shape = "lame_wob_adjoint_35";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
