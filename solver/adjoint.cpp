@@ -1,6 +1,6 @@
 
 // Compile with: c++ -std=c++17 -O3 -pedantic -Wall -Xclang -fopenmp gradientEstimateLame.cpp -o gel -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -lomp -w
-// c++ -std=c++17 -O3 -pedantic -Wall -Xclang -fopenmp gradientEstimateLame.cpp -o gel -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -I /opt/homebrew/opt/libomp/include -L /opt/homebrew/opt/libomp/lib -lomp -w
+// c++ -std=c++17 -O3 -pedantic -Wall -Xclang -fopenmp adjoint.cpp -o adjoint -I /opt/homebrew/Cellar/eigen/3.4.0_1/include/eigen3 -I /opt/homebrew/opt/libomp/include -L /opt/homebrew/opt/libomp/lib -lomp -w
 
 #include <algorithm>
 #include <array>
@@ -675,7 +675,7 @@ Vec2D getMixedConditionResultKernelForward( Vec2D startingPoint, vector<Polyline
       function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
       const float phi = 1.0f;
-      const float k = 3.0f; // TODO: variable k could be set
+      const float k = 5.0f; // TODO: variable k could be set
       const float p_k = 1/3; 
 
       Vec2D finalResult = Vec2D(0, 0);
@@ -831,7 +831,7 @@ void solveGradientWOB( Vec2D x0,
       double invPdf = sample.second; // The inverse PDF for sampling y
 
       // --- STEP 2: Estimate μ at that new point y ---
-      Vec2D phi_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 4);
+      Vec2D phi_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 6);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
       vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
@@ -865,7 +865,7 @@ void solveGradientWOB( Vec2D x0,
 }
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_adjoint_35";
+   string shape = "lame_wob_adjoint_42";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
