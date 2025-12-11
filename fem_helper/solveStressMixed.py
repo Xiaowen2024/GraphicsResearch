@@ -218,7 +218,7 @@ for i in range(dim):
     for j in range(dim):
         grid.point_data[f"stress_{i}{j}"] = stress_point_array[:, i, j]
 
-# Plot
+# Plot 
 # plotter = pyvista.Plotter()
 # plotter.add_mesh(grid, scalars="stress_00", show_edges=True)
 # plotter.view_xy()  # Set the view to face the straight side
@@ -338,7 +338,17 @@ points_to_sample = np.array([
     [0.8, 0.2, 0.0],   # Bottom-right region
     
     [0.0666667, 0.0666667,  0.0],
-    [0.533333, 0.0666667,  0.0]
+    [0.533333, 0.0666667,  0.0], 
+    [0.01, 0.1,  0.0],
+    [0.01, 0.2,  0.0],
+    [0.01, 0.3,  0.0],
+    [0.01, 0.4,  0.0],
+    [0.01, 0.6,  0.0],
+    [0.01, 0.5,  0.0],
+    [0.01, 0.6,  0.0],
+    [0.01, 0.7,  0.0],
+    [0.01, 0.8,  0.0],
+    [0.01, 0.9,  0.0]
 ])
 # 4. Find which cells contain these points for evaluation
 # This is necessary for dolfinx to know where to get the data from
@@ -347,40 +357,76 @@ cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points_to_
 colliding_cells = dolfinx.geometry.compute_colliding_cells(domain, cell_candidates, points_to_sample)
 
 # 5. Evaluate the gradient at the points found on the current MPI process
+bb_tree = dolfinx.geometry.bb_tree(domain, domain.topology.dim)
+cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points_to_sample)
+colliding_cells = dolfinx.geometry.compute_colliding_cells(domain, cell_candidates, points_to_sample)
+
+# Initialize lists to store points that belong to THIS process
 points_on_proc = []
 cells_for_eval = []
+
+# Loop through all requested points and check if they exist on this process's mesh partition
 for i, point in enumerate(points_to_sample):
     if len(colliding_cells.links(i)) > 0:
         points_on_proc.append(point)
         cells_for_eval.append(colliding_cells.links(i)[0])
 
+# Convert list to NumPy array for FEniCS functions
 points_on_proc_np = np.array(points_on_proc, dtype=np.float64)
 
+# --- STEP 5: Evaluate fields (Fixes applied here) ---
 if len(points_on_proc_np) > 0:
-    # `eval` returns a flattened array, so we reshape it to (num_points, 2, 2)
+    # A. Gradient
+    # Note: grad_u_func must be defined earlier (Function in W_grad space)
     grad_values = grad_u_func.eval(points_on_proc_np, cells_for_eval).reshape(-1, dim, dim)
+    
+    # B. Displacement (Fix: Use .eval() to get exact value at point, not mesh node)
+    u_eval_values = uh.eval(points_on_proc_np, cells_for_eval).reshape(-1, dim)
+    
+    # C. Stress (Fix: Use .eval() on the stress Function)
+    # Note: Ensure 'stress_point' is defined earlier as a Function in a CG1 space
+    stress_eval_values = stress_point.eval(points_on_proc_np, cells_for_eval).reshape(-1, dim, dim)
+    
 else:
-    # No points on this process, create empty arrays
+    # Handle empty arrays if this MPI rank has no points
     grad_values = np.empty((0, dim, dim))
+    u_eval_values = np.empty((0, dim))
+    stress_eval_values = np.empty((0, dim, dim))
 
-# 6. Gather results on the root process (rank 0) and save to a file
+# --- STEP 6: Gather results on Root Process ---
 comm = MPI.COMM_WORLD
 all_points = comm.gather(points_on_proc_np, root=0)
 all_grads = comm.gather(grad_values, root=0)
+all_us = comm.gather(u_eval_values, root=0)          
+all_stresses = comm.gather(stress_eval_values, root=0) 
 
 if comm.rank == 0:
-    output_filename = "displacement_gradient.txt"
+    output_filename = "displacement_gradient_u_and_stress_FIXED.txt"
     with open(output_filename, "w") as f:
-        f.write("# Displacement Gradient Tensor G_ij = du_i / dx_j\n")
-        f.write("# Each entry corresponds to a sampled point.\n")
+        f.write("# FEA Output: Displacement, Gradient, and Stress Tensors\n")
+        f.write("# CORRECTED: Values evaluated exactly at probe points.\n")
         f.write("-" * 60 + "\n\n")
 
-        # Iterate through data gathered from all processes
-        for points_batch, grads_batch in zip(all_points, all_grads):
-            for point, grad_tensor in zip(points_batch, grads_batch):
+        # Zip all gathered batches (one batch per MPI process)
+        for points_batch, grads_batch, us_batch, stresses_batch in zip(all_points, all_grads, all_us, all_stresses):
+            
+            # Zip the individual points within each batch
+            for point, grad_tensor, u_vec, stress_tensor in zip(points_batch, grads_batch, us_batch, stresses_batch):
+                
                 f.write(f"Point (x, y): ({point[0]:.4f}, {point[1]:.4f})\n")
+                
+                # Displacement
+                f.write(f"Displacement Vector U:\n")
+                f.write(f"  [u_x: {u_vec[0]: .6e}, u_y: {u_vec[1]: .6e}]\n")
+                
+                # Gradient
                 f.write(f"Gradient Tensor G:\n")
                 f.write(f"  [[{grad_tensor[0, 0]: .6e}, {grad_tensor[0, 1]: .6e}],\n")
-                f.write(f"   [{grad_tensor[1, 0]: .6e}, {grad_tensor[1, 1]: .6e}]]\n\n")
+                f.write(f"   [{grad_tensor[1, 0]: .6e}, {grad_tensor[1, 1]: .6e}]]\n")
 
-    print(f"✅ Displacement gradients saved to '{output_filename}'")
+                # Stress
+                f.write(f"Stress Tensor Sigma:\n")
+                f.write(f"  [[{stress_tensor[0, 0]: .6e}, {stress_tensor[0, 1]: .6e}],\n")
+                f.write(f"   [{stress_tensor[1, 0]: .6e}, {stress_tensor[1, 1]: .6e}]]\n\n")
+
+    print(f"Successfully wrote validated ground truth to {output_filename}")

@@ -2,7 +2,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 # Input and output file paths
-input_file = '../output/lame_wob_forward_zero_displacement_displacements.csv'
+input_file = '../output/lame_wob_adjoint_46_displacements.csv'
 
 # Deformed points (Ux, Uy)
 data = np.loadtxt(input_file, delimiter=',', skiprows=0)
