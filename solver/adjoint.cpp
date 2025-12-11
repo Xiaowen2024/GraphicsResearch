@@ -49,6 +49,7 @@ inline vector<Vec2D> operator*(double scalar, const vector<Vec2D>& vec) {
    return result;
 }
 
+
 // Helper function for scalar multiplication with nested vector structures
 inline std::vector<std::vector<Vec2D>> operator*(double scalar, const std::vector<std::vector<Vec2D>>& tensor) {
    std::vector<std::vector<Vec2D>> result;
@@ -90,29 +91,53 @@ pair<Vec2D, double> sampleNeumannBoundary() {
 
 using Polyline = vector<Vec2D>;
 
-vector<Vec2D> tensor3DVec2DMultiply(const vector<vector<Vec2D>>& tensor, const Vec2D& vec) {
-    // The result is a 2-element vector of Vec2D objects.
-    vector<Vec2D> result(2, Vec2D(0.0, 0.0));
+// vector<Vec2D> tensor3DVec2DMultiply(const vector<vector<Vec2D>>& tensor, const Vec2D& vec) {
+//     // The result is a 2-element vector of Vec2D objects.
+//     vector<Vec2D> result(2, Vec2D(0.0, 0.0));
 
-    // Get the components of the input vector.
-    double vx = vec.real();
-    double vy = vec.imag();
+//     // Get the components of the input vector.
+//     double vx = vec.real();
+//     double vy = vec.imag();
 
-    // Loop through the first dimension of the tensor.
-    for (int i = 0; i < 2; ++i) {
-        // For each row 'i' of the tensor, we calculate a new Vec2D.
-        // The first component of this new Vec2D is the dot product of the
-        // first row of the matrix slice with the input vector.
-        double real_component = tensor[i][0].real() * vx + tensor[i][0].imag() * vy;
+//     // Loop through the first dimension of the tensor.
+//     for (int i = 0; i < 2; ++i) {
+//         // For each row 'i' of the tensor, we calculate a new Vec2D.
+//         // The first component of this new Vec2D is the dot product of the
+//         // first row of the matrix slice with the input vector.
+//         double real_component = tensor[i][0].real() * vx + tensor[i][0].imag() * vy;
         
-        // The second component of the new Vec2D is the dot product of the
-        // second row of the matrix slice with the input vector.
-        double imag_component = tensor[i][1].real() * vx + tensor[i][1].imag() * vy;
+//         // The second component of the new Vec2D is the dot product of the
+//         // second row of the matrix slice with the input vector.
+//         double imag_component = tensor[i][1].real() * vx + tensor[i][1].imag() * vy;
         
-        result[i] = Vec2D(real_component, imag_component);
-    }
+//         result[i] = Vec2D(real_component, imag_component);
+//     }
 
-    return result;
+//     return result;
+// }
+
+vector<Vec2D> tensorContractAndFlip(const vector<vector<Vec2D>>& dU_dy, const Vec2D& density) {
+   vector<Vec2D> result(2, Vec2D(0.0, 0.0));
+
+   double mu_x = density.real();
+   double mu_y = density.imag();
+
+   // Loop i: Displacement Component (u_x, u_y)
+   for (int i = 0; i < 2; ++i) {
+       
+       // --- Calculate derivative w.r.t X ---
+       // Formula: du_i/dx = sum_j ( d(U_ij)/dx * mu_j )
+       // Recall:  d/dx = - d/dy_x (which is stored in .real())
+       double deriv_wrt_x = -1.0 * (dU_dy[i][0].real() * mu_x + dU_dy[i][1].real() * mu_y);
+
+       // --- Calculate derivative w.r.t Y ---
+       // Recall:  d/dy = - d/dy_y (which is stored in .imag())
+       double deriv_wrt_y = -1.0 * (dU_dy[i][0].imag() * mu_x + dU_dy[i][1].imag() * mu_y);
+
+       result[i] = Vec2D(deriv_wrt_x, deriv_wrt_y);
+   }
+
+   return result;
 }
 
 Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, vector<Polyline> displacedPoints, double num_tol=1e-3) { 
@@ -710,7 +735,7 @@ Vec2D getMixedConditionResultKernelForward( Vec2D startingPoint, vector<Polyline
       function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
       const float phi = 1.0f;
-      const float k = 2.5f; // TODO: variable k could be set
+      const float k = 2.0f; // TODO: variable k could be set
       const float p_k = 1/3; 
 
       Vec2D finalResult = Vec2D(0, 0);
@@ -776,76 +801,35 @@ Vec2D getMixedConditionResultKernelForward( Vec2D startingPoint, vector<Polyline
       return finalResult;
 }
 
-pair<Vec2D, vector<Vec2D>> getDisplacementAndGradientForward( Vec2D startingPoint, vector<Polyline> boundaryDirichlet,
-      vector<Polyline> boundaryNeumann, function<Vec2D (Vec2D, vector<Polyline>, vector<Polyline>)> getDirichletValue,
-      function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
+vector<double> calculateStress(const vector<Vec2D>& grad_u, double E, double nu) {
+    
+   double nu_val = (double)nu;
+   double E_val = (double)E;
 
-      const float phi = 1.0f;
-      const float k = 4.0f; // TODO: variable k could be set
-      const float p_k = 1/3; 
+   // 2. Compute Lame Parameters
+   double mu = E_val / (2.0 * (1.0 + nu_val));
+   double lambda = (E_val * nu_val) / ((1.0 + nu_val) * (1.0 - 2.0 * nu_val));
 
-      Vec2D finalResult = Vec2D(0, 0);
-      Polyline finalGradientResult = {Vec2D(0, 0), Vec2D(0, 0)};
+   // 3. Extract Gradients (Real part is dx, Imag part is dy)
+   // grad[0] is u_x, grad[1] is u_y
+   double du_dx = grad_u[0].real();
+   double du_dy = grad_u[0].imag(); 
+   double dv_dx = grad_u[1].real();
+   double dv_dy = grad_u[1].imag();
 
-      // --- INITIALIZATION ---
-      thread_local std::mt19937 rng(std::random_device{}());
-      pair<Vec2D, double> firstStep = rectangleBoundarySampler(); // (startingPoint, boundaryCorners, rng);
-      Vec2D currentPoint = firstStep.first;
-      double invPdf_0 = firstStep.second;
-      // Vec2D currentPoint = startingPoint;
-      // double invPdf_0 = invPDF;
-      BoundaryType initialType = getBoundaryTypeAtPoint(currentPoint, boundaryDirichlet, boundaryNeumann);
-      Vec2D pathWeight = invPdf_0 * fredholmEquationKnown(currentPoint, boundaryDirichlet, boundaryNeumann, k);
+   // 4. Compute Strain (Symmetric)
+   double eps_xx = du_dx;
+   double eps_yy = dv_dy;
+   double eps_xy = 0.5 * (du_dy + dv_dx);
 
-      std::uniform_real_distribution<double> uni01(0.0, 1.0);
-      // --- THE RANDOM WALK ON THE BOUNDARY ---
-      for (int i = 0; i < maxDepth; i++) {
-         if (i == maxDepth - 1){
-            pathWeight = 0.5 * pathWeight;
-         }
-
-         // --- 1. ACCUMULATE RESULT ---
-         finalResult += matrixVectorMultiply(solutionDomainUnknown(startingPoint, currentPoint, 1.0), pathWeight);
-         vector<vector<Vec2D>> gradient_sample = gradientDomainUnknown(startingPoint, currentPoint, 1.0);
-         finalGradientResult += tensor3DVec2DMultiply(gradient_sample, pathWeight); 
-
-         // --- 2. RUSSIAN ROULETTE ---
-         const double absorptionProb = 0.2;
-         if (uni01(rng) < absorptionProb) {
-            break;
-         }
-
-         pathWeight *= (1.0f / (1.0f - absorptionProb));
-
-         // --- 3. UPDATE PATH WEIGHT ---
-         Vec2D previousPoint = currentPoint;
-         BoundaryType currentType = getBoundaryTypeAtPoint(previousPoint, boundaryDirichlet, boundaryNeumann);
-
-         if (currentType == BoundaryType::Neumann) {
-            pair<Vec2D, double> nextStep = importanceSample(previousPoint);
-            currentPoint = nextStep.first;
-            double invPdf = nextStep.second;
-            Vec2D normal_prev = getNormal(previousPoint)[0];
-            pathWeight = matrixVectorMultiply(fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k), pathWeight);
-         } else { // DIRICHLET
-            Vec2D knownDirichletTerm = k * getDirichletValue(previousPoint, boundaryDirichlet, displacedPoints);
-            // Correspond to the indirect double to indirect single layer transformation mentioned in the paper
-            if (uni01(rng) < p_k) {
-               pair<Vec2D, double> nextStep = importanceSample(previousPoint);
-               currentPoint = nextStep.first;
-               double invPdf = nextStep.second;
-               Vec2D normal_prev = getNormal(previousPoint)[0];
-               Polyline weightUpdate = fredholmEquationUnknown(previousPoint, currentPoint, boundaryDirichlet, boundaryNeumann, normal_prev, invPdf, k);
-               pathWeight = matrixVectorMultiply((1.0f / p_k) * weightUpdate, pathWeight) + knownDirichletTerm;
-            } else {
-               pathWeight = (1.0f / (1.0f - p_k)) * pathWeight + knownDirichletTerm;
-               currentPoint = previousPoint;
-            }
-         }
-      }
-
-      return {finalResult, finalGradientResult};
+   // 5. Compute Stress (Plane Strain)
+   double trace = eps_xx + eps_yy;
+   double sig_xx = lambda * trace + 2.0 * mu * eps_xx;
+   double sig_yy = lambda * trace + 2.0 * mu * eps_yy;
+   double sig_xy = 2.0 * mu * eps_xy;
+   return {sig_xx, sig_xy, sig_yy};
 }
+
 
 void solveGradientWOB( Vec2D x0,
               vector<Polyline> boundaryDirichlet, 
@@ -866,7 +850,7 @@ void solveGradientWOB( Vec2D x0,
       double invPdf = sample.second; // The inverse PDF for sampling y
 
       // --- STEP 2: Estimate μ at that new point y ---
-      Vec2D phi_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 4);
+      Vec2D density = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 4);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
       vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
@@ -874,12 +858,32 @@ void solveGradientWOB( Vec2D x0,
       vector<Polyline> gradient = kelvinKernelGradient(mu, poissonRatio, x0 - y);
       
       // --- STEP 4: Combine everything to get one sample of u ---
-      Vec2D u_sample = matrixVectorMultiply(kelvin_kernel, phi_at_y) * invPdf;
-      vector<Vec2D> gradient_sample = tensor3DVec2DMultiply(gradient, phi_at_y);
+      Vec2D u_sample = matrixVectorMultiply(kelvin_kernel, density) * invPdf;
 
       sumU += u_sample;
-      sumGradient[0] += gradient_sample[0];
-      sumGradient[1] += gradient_sample[1];
+      // vector<Vec2D> gradient_sample = invPdf * tensorContractAndFlip(gradient, density);
+      vector<Vec2D> sample_grad(2, Vec2D(0.0, 0.0));
+
+      for (int i = 0; i < 2; ++i) {      // i = displacement component (u_x, u_y)
+         for (int j = 0; j < 2; ++j) {  // j = density component source (mu_x, mu_y)
+            
+            // 1. Get density value for component j
+            double mu_val = (j == 0) ? density.real() : density.imag();
+
+            // 2. Get derivatives w.r.t Y (from kernel)
+            double dUij_dy_x = gradient[i][j].real();
+            double dUij_dy_y = gradient[i][j].imag();
+
+            // 3. Convert to derivatives w.r.t X (Sign Flip!)
+            double dUij_dx_x = -1.0 * dUij_dy_x;
+            double dUij_dx_y = -1.0 * dUij_dy_y;
+
+            sample_grad[i] += Vec2D(dUij_dx_x * mu_val, dUij_dx_y * mu_val);
+         }
+         
+         // Apply Monte Carlo Weight
+         sumGradient[i] += sample_grad[i] * invPdf;
+      }
    }
 
    displacementFile << real(x0) << "," << imag(x0) << ",";
@@ -897,10 +901,17 @@ void solveGradientWOB( Vec2D x0,
       cout << "Nan value encountered at x0: " << real(x0) << ", " << imag(x0) << endl;
    }
    gradientFile << real(sumGradient[1]) /nWalks  << "," << imag(sumGradient[1])/nWalks << "\n";
+
+   vector<Vec2D> displacement_gradient = {Vec2D(0.0, 0.0), Vec2D(0.0, 0.0)};
+   displacement_gradient[0] = real(sumGradient[1]) /nWalks;
+   displacement_gradient[1] = imag(sumGradient[1]) /nWalks;
+   vector<double> stress = calculateStress(displacement_gradient, E, poissonRatio);
+   gradientFile << "stress: " << real(x0) << "," << imag(x0) << ",";
+   gradientFile << stress[0]  << ", " << stress[1] << ", " << stress[1]  << ", " << stress[2] << "\n";
 }
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_adjoint_46";
+   string shape = "lame_wob_adjoint_52";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
@@ -932,33 +943,12 @@ int main( int argc, char** argv ) {
    customValues.push_back(Vec2D(0.01, 0.7));
    customValues.push_back(Vec2D(0.01, 0.8));
    customValues.push_back(Vec2D(0.01, 0.9));
-   customValues.push_back(Vec2D(0.02, 0.1));
-   customValues.push_back(Vec2D(0.02, 0.2));
-   customValues.push_back(Vec2D(0.02, 0.3));
-   customValues.push_back(Vec2D(0.02, 0.4));
-   customValues.push_back(Vec2D(0.02, 0.5));
-   customValues.push_back(Vec2D(0.02, 0.6));
-   customValues.push_back(Vec2D(0.02, 0.7));
-   customValues.push_back(Vec2D(0.02, 0.8));
-   customValues.push_back(Vec2D(0.02, 0.9));
-   customValues.push_back(Vec2D(0.03, 0.1));
-   customValues.push_back(Vec2D(0.03, 0.2));
-   customValues.push_back(Vec2D(0.03, 0.3));
-   customValues.push_back(Vec2D(0.03, 0.4));
-   customValues.push_back(Vec2D(0.03, 0.5));
-   customValues.push_back(Vec2D(0.03, 0.6));
-   customValues.push_back(Vec2D(0.03, 0.7));
-   customValues.push_back(Vec2D(0.03, 0.8));
-   customValues.push_back(Vec2D(0.03, 0.9));
-   customValues.push_back(Vec2D(0.99, 0.1));
-   customValues.push_back(Vec2D(0.99, 0.2));
-   customValues.push_back(Vec2D(0.99, 0.3));
-   customValues.push_back(Vec2D(0.99, 0.4));
-   customValues.push_back(Vec2D(0.99, 0.5));
-   customValues.push_back(Vec2D(0.99, 0.6));
-   customValues.push_back(Vec2D(0.99, 0.7));
-   customValues.push_back(Vec2D(0.99, 0.8));
-   customValues.push_back(Vec2D(0.99, 0.9));
+   customValues.push_back(Vec2D(0.5, 0.9));
+   customValues.push_back(Vec2D(0.5, 0.5));
+   customValues.push_back(Vec2D(0.5, 0.2));
+   customValues.push_back(Vec2D(0.5, 0.02));
+   customValues.push_back(Vec2D(0.1, 0.5));
+   customValues.push_back(Vec2D(0.9, 0.5));
    for (const auto& point : customValues) {
       if (insideDomain(point, boundaryDirichlet, boundaryNeumann)) {
             solveGradientWOB(point, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, displacementFile, gradientFile);
