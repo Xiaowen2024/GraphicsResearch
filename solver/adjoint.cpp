@@ -137,31 +137,66 @@ Vec2D interpolateVec2DBoundaryPoints(Vec2D v, vector<Polyline> originalPoints, v
    return nan;
 }
 
+// pair<Vec2D, double> rectangleBoundarySampler() {
+//    double min_x = 0.0, min_y = 0.0, max_x = 1.0, max_y = 1.0;
+//    double width = max_x - min_x, height = max_y - min_y;
+//    double perimeter = 2.0 * (width + height);
+
+//    static thread_local std::mt19937 gen((std::random_device())());
+//    static std::uniform_real_distribution<> distrib(0.0, perimeter);
+
+//    double random_distance = distrib(gen);
+//    double x, y;
+
+//    if (random_distance < width) {
+//        x = min_x + random_distance; y = min_y;
+//    } else if (random_distance < width + height) {
+//        x = max_x; y = min_y + (random_distance - width);
+//    } else if (random_distance < 2 * width + height) {
+//        x = max_x - (random_distance - (width + height));
+//        y = max_y;
+//    } else {
+//        x = min_x;
+//        y = max_y - (random_distance - (2 * width + height));
+//    }
+
+//    double pdf = 1.0 / perimeter;               
+//    return make_pair(Vec2D{x, y},  1 / pdf);
+// }
+
+// [Fix 1] Robust sampler that strictly avoids corners to prevent singularity errors
 pair<Vec2D, double> rectangleBoundarySampler() {
    double min_x = 0.0, min_y = 0.0, max_x = 1.0, max_y = 1.0;
    double width = max_x - min_x, height = max_y - min_y;
    double perimeter = 2.0 * (width + height);
 
    static thread_local std::mt19937 gen((std::random_device())());
-   static std::uniform_real_distribution<> distrib(0.0, perimeter);
+   // Sample strictly inside the edge interval (epsilon padding)
+   // This prevents the walk from hitting the exact corner where the free term is undefined
+   double epsilon = 1e-4; 
+   std::uniform_real_distribution<> distrib(epsilon, perimeter - epsilon);
 
    double random_distance = distrib(gen);
    double x, y;
 
    if (random_distance < width) {
+       // Bottom edge
        x = min_x + random_distance; y = min_y;
    } else if (random_distance < width + height) {
+       // Right edge
        x = max_x; y = min_y + (random_distance - width);
    } else if (random_distance < 2 * width + height) {
+       // Top edge
        x = max_x - (random_distance - (width + height));
        y = max_y;
    } else {
+       // Left edge
        x = min_x;
        y = max_y - (random_distance - (2 * width + height));
    }
 
    double pdf = 1.0 / perimeter;               
-   return make_pair(Vec2D{x, y},  1 / pdf);
+   return make_pair(Vec2D{x, y}, 1.0 / pdf);
 }
 
 vector<Polyline> boundaryDirichlet = {{ Vec2D(0, 1), Vec2D(0, 0)}, { Vec2D(1, 0), Vec2D(1, 1)}};
@@ -576,9 +611,9 @@ Vec2D fredholmEquationKnown(Vec2D point, vector<Polyline> boundaryDirichlet, vec
    }
    else {
       double integralFreeTerm = 0.5;
-      if (isOnCorner(point, boundaryDirichlet, boundaryNeumann)) {
-         integralFreeTerm = 0.25;
-      }
+      // if (isOnCorner(point, boundaryDirichlet, boundaryNeumann)) {
+      //    integralFreeTerm = 0.25;
+      // }
       return 1 / integralFreeTerm * getNeumannValue(point, boundaryNeumann);
    }
 }
@@ -590,9 +625,9 @@ Polyline fredholmEquationUnknown(Vec2D startingPoint, Vec2D nextPoint, vector<Po
    }
    else {
       double integralFreeTerm = 0.5;
-      if (isOnCorner(startingPoint, boundaryDirichlet, boundaryNeumann)) {
-         integralFreeTerm = 0.25;
-      }
+      // if (isOnCorner(startingPoint, boundaryDirichlet, boundaryNeumann)) {
+      //    integralFreeTerm = 0.25;
+      // }
       return - 1.0f / integralFreeTerm * invPdf * computeTractionKernel2D(startingPoint, nextPoint, nextPointNormal, mu, poissonRatio);
    }
 }
@@ -675,7 +710,7 @@ Vec2D getMixedConditionResultKernelForward( Vec2D startingPoint, vector<Polyline
       function<Vec2D(Vec2D, vector<Polyline>)> getNeumannValue, int maxDepth) {
 
       const float phi = 1.0f;
-      const float k = 5.0f; // TODO: variable k could be set
+      const float k = 2.5f; // TODO: variable k could be set
       const float p_k = 1/3; 
 
       Vec2D finalResult = Vec2D(0, 0);
@@ -831,7 +866,7 @@ void solveGradientWOB( Vec2D x0,
       double invPdf = sample.second; // The inverse PDF for sampling y
 
       // --- STEP 2: Estimate μ at that new point y ---
-      Vec2D phi_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 6);
+      Vec2D phi_at_y = getMixedConditionResultKernelForward(y, boundaryDirichlet, boundaryNeumann, getDirichletValue, getNeumannValue, 4);
 
       // --- STEP 3: Calculate the Kelvin Kernel Γ(x,y) ---
       vector<Vec2D> kelvin_kernel = kelvinKernel(mu, poissonRatio, x0 - y);
@@ -839,7 +874,7 @@ void solveGradientWOB( Vec2D x0,
       vector<Polyline> gradient = kelvinKernelGradient(mu, poissonRatio, x0 - y);
       
       // --- STEP 4: Combine everything to get one sample of u ---
-      Vec2D u_sample = matrixVectorMultiply(kelvin_kernel, phi_at_y);
+      Vec2D u_sample = matrixVectorMultiply(kelvin_kernel, phi_at_y) * invPdf;
       vector<Vec2D> gradient_sample = tensor3DVec2DMultiply(gradient, phi_at_y);
 
       sumU += u_sample;
@@ -865,7 +900,7 @@ void solveGradientWOB( Vec2D x0,
 }
 
 int main( int argc, char** argv ) {
-   string shape = "lame_wob_adjoint_42";
+   string shape = "lame_wob_adjoint_46";
    double h = 0.01;
    string fileName = shape; 
    int s = 16;
@@ -897,6 +932,24 @@ int main( int argc, char** argv ) {
    customValues.push_back(Vec2D(0.01, 0.7));
    customValues.push_back(Vec2D(0.01, 0.8));
    customValues.push_back(Vec2D(0.01, 0.9));
+   customValues.push_back(Vec2D(0.02, 0.1));
+   customValues.push_back(Vec2D(0.02, 0.2));
+   customValues.push_back(Vec2D(0.02, 0.3));
+   customValues.push_back(Vec2D(0.02, 0.4));
+   customValues.push_back(Vec2D(0.02, 0.5));
+   customValues.push_back(Vec2D(0.02, 0.6));
+   customValues.push_back(Vec2D(0.02, 0.7));
+   customValues.push_back(Vec2D(0.02, 0.8));
+   customValues.push_back(Vec2D(0.02, 0.9));
+   customValues.push_back(Vec2D(0.03, 0.1));
+   customValues.push_back(Vec2D(0.03, 0.2));
+   customValues.push_back(Vec2D(0.03, 0.3));
+   customValues.push_back(Vec2D(0.03, 0.4));
+   customValues.push_back(Vec2D(0.03, 0.5));
+   customValues.push_back(Vec2D(0.03, 0.6));
+   customValues.push_back(Vec2D(0.03, 0.7));
+   customValues.push_back(Vec2D(0.03, 0.8));
+   customValues.push_back(Vec2D(0.03, 0.9));
    customValues.push_back(Vec2D(0.99, 0.1));
    customValues.push_back(Vec2D(0.99, 0.2));
    customValues.push_back(Vec2D(0.99, 0.3));
